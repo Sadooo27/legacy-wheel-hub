@@ -9,8 +9,12 @@ settings the moment the wheel finishes calibrating.
 Built with Python, PySide6 and QFluentWidgets.
 
 ## Screenshots
+<details>
+  <summary>Click to view screenshots</summary>
 <img width="1366" height="860" alt="image1" src="https://github.com/user-attachments/assets/c5db1a10-4873-4958-8944-d1e78d086bcd" />
 <img width="1366" height="860" alt="image2" src="https://github.com/user-attachments/assets/a15ee3ff-5826-4790-971e-4c8549470a8c" />
+
+</details>
 
 ## 1) Install the wheel drivers first
 This app does **not** bundle any Logitech drivers. On Windows 10/11, install
