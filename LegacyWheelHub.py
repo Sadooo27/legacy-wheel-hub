@@ -69,12 +69,31 @@ def _find_wheel():
             return p
     return os.path.join(_exe_dir(), "wheel.png")
 
+def _screen_px():
+    # primary-screen physical size, queried BEFORE QApplication exists.
+    ov = os.environ.get("LWH_SCREEN")          # test override "WxH"
+    if ov and "x" in ov:
+        try:
+            w, h = ov.lower().split("x"); return int(w), int(h)
+        except Exception:
+            pass
+    try:
+        if sys.platform == "win32":
+            import ctypes
+            u = ctypes.windll.user32
+            w, h = int(u.GetSystemMetrics(0)), int(u.GetSystemMetrics(1))
+            if w > 0 and h > 0:
+                return w, h
+    except Exception:
+        pass
+    return 1920, 1080
+
 APP_DIR = _exe_dir()
 WHEEL_PNG = _find_wheel()
 SETTINGS_FILE = os.path.join(_data_dir(), "settings.json")
 STEER_CENTER = 8192
 ACCENT_FALLBACK = "#ff6a1a"
-HUB_VERSION = "v1.0"
+HUB_VERSION = "v1.0.1"
 AUTHOR = "Sadooo"
 
 
@@ -194,7 +213,7 @@ LANG = {
         "set.theme": "Theme", "set.language": "Language", "set.tray": "Minimize to system tray",
         "set.tray_h": "When on, the minimize button hides the app to the system tray (show hidden icons).",
         "set.devmode": "Device detection mode",
-        "set.devmode_h": "Force a wheel layout without hardware. \u201cAuto\u201d uses real detection.",
+        "set.devmode_h": "Force a wheel layout without hardware. \u201cAuto\u201d uses real detection.", "set.ui_scale": "Interface scale", "set.ui_scale_h": "Enlarge the whole interface on high-resolution (1440p/4K) screens. Takes effect after restarting the app.", "set.restart_hint": "Restart the app to apply the new scale.",
         "info.opmode_active": "Native Advanced Mode (Unlocked)", "info.opmode_idle": "Idle / Disconnected",
         "info.active": "Active", "info.standby": "Standby",
     },
@@ -224,17 +243,17 @@ LANG = {
         "ffb.title": "Kuvvet Geri Bildirim Testi",
         "ffb.subtitle": "FFB motorunu do\u011frudan test edin. Hi\u00e7bir oyun direksiyonu kullanm\u0131yorken yap\u0131lmas\u0131 en iyisidir.",
         "ffb.strength": "Test G\u00fcc\u00fc", "ffb.strength_h": "\u0130tme, Yay ve Tarama testlerinde kullan\u0131lan g\u00fc\u00e7.",
-        "ffb.push_l": "\u25c0  Sola \u0130t", "ffb.push_r": "Sa\u011fa \u0130t  \u25b6",
+        "ffb.push_l": "Sola \u0130t", "ffb.push_r": "Sa\u011fa \u0130t",
         "ffb.spring": "Yay (Merkez)", "ffb.spring_stop": "Yay\u0131 Durdur",
         "ffb.sweep": "Otomatik Tarama", "ffb.sweep_stop": "Taramay\u0131 Durdur",
         "ffb.advanced": "GEL\u0130\u015eM\u0130\u015e MOTOR TESTLER\u0130",
-        "ffb.pulse_l": "\u26a1 Sol Darbe", "ffb.pulse_r": "Sa\u011f Darbe \u26a1",
-        "ffb.vibe_light": "\u3030 Hafif Titre\u015fim", "ffb.vibe_med": "\u3030 Orta Titre\u015fim",
-        "ffb.vibe_fast": "\u3030 H\u0131zl\u0131 G\u00fcr\u00fclt\u00fc", "ffb.vibe_heavy": "\u3030 A\u011f\u0131r Titre\u015fim",
-        "ffb.stop": "\u25a0  T\u00dcM KUVVETLER\u0130 DURDUR",
-        "input.title": "Giri\u015f \u0130zleyici", "input.led": "\U0001F4A1  LED Kar\u015f\u0131lama Testi",
+        "ffb.pulse_l": "Sol Darbe", "ffb.pulse_r": "Sa\u011f Darbe",
+        "ffb.vibe_light": "Hafif Titre\u015fim", "ffb.vibe_med": "Orta Titre\u015fim",
+        "ffb.vibe_fast": "H\u0131zl\u0131 G\u00fcr\u00fclt\u00fc", "ffb.vibe_heavy": "A\u011f\u0131r Titre\u015fim",
+        "ffb.stop": "T\u00dcM KUVVETLER\u0130 DURDUR",
+        "input.title": "Giri\u015f \u0130zleyici", "input.led": "LED Kar\u015f\u0131lama Testi",
         "input.wheel": "D\u0130REKS\u0130YON", "input.shifter": "VITES \u00dcN\u0130TES\u0130", "input.gear": "V\u0130TES  (H-D\u00dcZEN\u0130)",
-        "input.lpad": "\u25c0 SOL PADDLE", "input.rpad": "SA\u011e PADDLE \u25b6",
+        "input.lpad": "SOL PADDLE", "input.rpad": "SA\u011e PADDLE",
         "input.face": "Y\u00dcZ TU\u015eLARI", "input.dpad": "Y\u00d6N TU\u015eU", "input.horn": "KORNA",
         "input.led_nc": "Direksiyon ba\u011fl\u0131 de\u011fil.",
         "input.led_g27": "LED testi yaln\u0131zca G27 i\u00e7indir (DFGT'de RPM LED'i yoktur).",
@@ -272,7 +291,7 @@ LANG = {
         "set.theme": "Tema", "set.language": "Dil", "set.tray": "Sistem tepsisine k\u00fc\u00e7\u00fclt",
         "set.tray_h": "A\u00e7\u0131kken, k\u00fc\u00e7\u00fcltme tu\u015fu uygulamay\u0131 sistem tepsisine (gizli simgeler) gizler.",
         "set.devmode": "Cihaz alg\u0131lama modu",
-        "set.devmode_h": "Donan\u0131ms\u0131z bir d\u00fczen zorla. \u201cOtomatik\u201d ger\u00e7ek alg\u0131lamay\u0131 kullan\u0131r.",
+        "set.devmode_h": "Donan\u0131ms\u0131z bir d\u00fczen zorla. \u201cOtomatik\u201d ger\u00e7ek alg\u0131lamay\u0131 kullan\u0131r.", "set.ui_scale": "Aray\u00fcz \u00f6l\u00e7e\u011fi", "set.ui_scale_h": "Y\u00fcksek \u00e7\u00f6z\u00fcn\u00fcrl\u00fckl\u00fc (1440p/4K) ekranlarda t\u00fcm aray\u00fcz\u00fc b\u00fcy\u00fct\u00fcr. Uygulama yeniden ba\u015flat\u0131l\u0131nca etkin olur.", "set.restart_hint": "Yeni \u00f6l\u00e7e\u011fin uygulanmas\u0131 i\u00e7in uygulamay\u0131 yeniden ba\u015flat\u0131n.",
         "info.opmode_active": "Yerel Geli\u015fmi\u015f Mod (Kilit A\u00e7\u0131k)", "info.opmode_idle": "Bo\u015fta / Ba\u011fl\u0131 De\u011fil",
         "info.active": "Aktif", "info.standby": "Beklemede",
     },
@@ -302,17 +321,17 @@ LANG = {
         "ffb.title": "Force-Feedback-Test",
         "ffb.subtitle": "Testen Sie den FFB-Motor direkt. Am besten, wenn kein Spiel das Lenkrad nutzt.",
         "ffb.strength": "Teststärke", "ffb.strength_h": "St\u00e4rke f\u00fcr Druck-, Feder- und Sweep-Tests.",
-        "ffb.push_l": "\u25c0  Nach links", "ffb.push_r": "Nach rechts  \u25b6",
+        "ffb.push_l": "Nach links", "ffb.push_r": "Nach rechts",
         "ffb.spring": "Feder (Mitte)", "ffb.spring_stop": "Feder stoppen",
         "ffb.sweep": "Auto-Sweep", "ffb.sweep_stop": "Sweep stoppen",
         "ffb.advanced": "ERWEITERTE MOTORTESTS",
-        "ffb.pulse_l": "\u26a1 Puls links", "ffb.pulse_r": "Puls rechts \u26a1",
-        "ffb.vibe_light": "\u3030 Leichte Vibration", "ffb.vibe_med": "\u3030 Mittlere Vibration",
-        "ffb.vibe_fast": "\u3030 Schnelles Rumpeln", "ffb.vibe_heavy": "\u3030 Starke Vibration",
-        "ffb.stop": "\u25a0  ALLE KR\u00c4FTE STOPPEN",
-        "input.title": "Eingangsmonitor", "input.led": "\U0001F4A1  LED-Begr\u00fc\u00dfungstest",
+        "ffb.pulse_l": "Puls links", "ffb.pulse_r": "Puls rechts",
+        "ffb.vibe_light": "Leichte Vibration", "ffb.vibe_med": "Mittlere Vibration",
+        "ffb.vibe_fast": "Schnelles Rumpeln", "ffb.vibe_heavy": "Starke Vibration",
+        "ffb.stop": "ALLE KR\u00c4FTE STOPPEN",
+        "input.title": "Eingangsmonitor", "input.led": "LED-Begr\u00fc\u00dfungstest",
         "input.wheel": "LENKRAD", "input.shifter": "SCHALTEINHEIT", "input.gear": "GANG  (H-SCHALTUNG)",
-        "input.lpad": "\u25c0 LINKES PADDLE", "input.rpad": "RECHTES PADDLE \u25b6",
+        "input.lpad": "LINKES PADDLE", "input.rpad": "RECHTES PADDLE",
         "input.face": "TASTEN", "input.dpad": "STEUERKREUZ", "input.horn": "HUPE",
         "input.led_nc": "Lenkrad nicht verbunden.",
         "input.led_g27": "LED-Test nur f\u00fcr G27 (DFGT hat keine RPM-LEDs).",
@@ -350,7 +369,7 @@ LANG = {
         "set.theme": "Design", "set.language": "Sprache", "set.tray": "In den Infobereich minimieren",
         "set.tray_h": "Wenn aktiv, blendet die Minimieren-Taste die App in den Infobereich (ausgeblendete Symbole) aus.",
         "set.devmode": "Ger\u00e4teerkennungsmodus",
-        "set.devmode_h": "Layout ohne Hardware erzwingen. \u201eAuto\u201c nutzt echte Erkennung.",
+        "set.devmode_h": "Layout ohne Hardware erzwingen. \u201eAuto\u201c nutzt echte Erkennung.", "set.ui_scale": "Oberfl\u00e4chenskalierung", "set.ui_scale_h": "Vergr\u00f6\u00dfert die gesamte Oberfl\u00e4che auf hochaufl\u00f6senden (1440p/4K) Bildschirmen. Wird nach einem Neustart der App wirksam.", "set.restart_hint": "Starten Sie die App neu, um die neue Skalierung anzuwenden.",
         "info.opmode_active": "Nativer Erweiterter Modus (Entsperrt)", "info.opmode_idle": "Leerlauf / Getrennt",
         "info.active": "Aktiv", "info.standby": "Standby",
     },
@@ -376,7 +395,7 @@ main_window = None
 
 def load_settings():
     base = {"theme": "dark", "language": "en", "last_device": None, "auto_load": False,
-            "minimize_to_tray": False, "win_w": 1366, "win_h": 720, "last_tab": "wheel",
+            "minimize_to_tray": False, "win_w": 1366, "win_h": 720, "last_tab": "wheel", "ui_scale": 100,
             "profiles": {"Global": {"angle": 900, "di_gain": 101, "di_spring": 0,
                                     "di_damper": 0, "di_center": 0, "di_persist": False}},
             "selected_profile": "Global"}
@@ -1762,6 +1781,18 @@ class SettingsTab(QWidget):
         self.combo_theme.setCurrentIndex(0 if isDarkTheme() else 1)
         self.combo_theme.currentIndexChanged.connect(self._on_theme)
         self.row_theme = self._field(lay, "set.theme", self.combo_theme)
+        self.combo_scale = ComboBox(); self.combo_scale.setMinimumWidth(190)
+        self._scale_vals = [100, 125, 150, 175, 200, 250]
+        for v in self._scale_vals:
+            self.combo_scale.addItem(f"{v}%", userData=v)
+        cur_scale = int(global_settings.get("ui_scale", 100))
+        if cur_scale not in self._scale_vals:
+            self._scale_vals.append(cur_scale); self.combo_scale.addItem(f"{cur_scale}%", userData=cur_scale)
+        self.combo_scale.setCurrentIndex(self._scale_vals.index(cur_scale))
+        self.combo_scale.currentIndexChanged.connect(self._on_scale)
+        self.row_scale = self._field(lay, "set.ui_scale", self.combo_scale)
+        self.scale_hint = CaptionLabel(tr("set.ui_scale_h")); self.scale_hint.setStyleSheet("color:#8a93a6;")
+        self.scale_hint.setWordWrap(True); lay.addWidget(self.scale_hint)
         lay.addSpacing(10)
 
         self.sec_test = self._sec(lay, "set.testing")
@@ -1792,6 +1823,14 @@ class SettingsTab(QWidget):
         if self._guard: return
         self.hub.set_theme(self.combo_theme.currentData())
 
+    def _on_scale(self, *_):
+        if self._guard: return
+        global_settings["ui_scale"] = int(self.combo_scale.currentData()); save_settings()
+        try:
+            InfoBar.success(tr("set.ui_scale"), tr("set.restart_hint"), duration=4000,
+                            position=InfoBarPosition.TOP, parent=self.window())
+        except Exception: pass
+
     def _on_lang(self, *_):
         if self._guard: return
         set_language(self.combo_lang.currentData()); self.hub.retranslate_all()
@@ -1817,6 +1856,7 @@ class SettingsTab(QWidget):
             lbl.setText(tr(key))
         self.cb_tray.setText(tr("set.tray")); self.tray_hint.setText(tr("set.tray_h"))
         self.test_hint.setText(tr("set.devmode_h"))
+        self.row_scale.setText(tr("set.ui_scale")); self.scale_hint.setText(tr("set.ui_scale_h"))
         ti = self.combo_theme.currentIndex()
         self.combo_theme.clear()
         self.combo_theme.addItem(tr("about.theme_dark"), userData="dark")
@@ -1989,7 +2029,7 @@ class ControlHub(FramelessWindow):
         self.setObjectName("ControlHub")
         self.setTitleBar(CustomTitleBar(self))
         self.setWindowTitle("Legacy Wheel Hub")
-        self.resize(int(global_settings.get("win_w", 1366)), int(global_settings.get("win_h", 720)))
+        self._restore_geometry()
         if global_settings.get("last_device") in DEVICE_PROFILES:
             active_profile = DEVICE_PROFILES[global_settings["last_device"]]
 
@@ -2228,6 +2268,29 @@ class ControlHub(FramelessWindow):
             InfoBar.success(tr("apply.ok_title"), tr("apply.ok_body"), duration=2000,
                             position=InfoBarPosition.TOP, parent=self)
 
+    def _restore_geometry(self):
+        self.resize(int(global_settings.get("win_w", 1366)), int(global_settings.get("win_h", 720)))
+        x = global_settings.get("win_x"); y = global_settings.get("win_y")
+        placed = False
+        try:
+            if x is not None and y is not None:
+                wx, wy, ww, wh = int(x), int(y), self.width(), self.height()
+                for scr in QApplication.screens():
+                    g = scr.availableGeometry()
+                    ox = min(wx + ww, g.right() + 1) - max(wx, g.left())
+                    oy = min(wy + wh, g.bottom() + 1) - max(wy, g.top())
+                    if ox >= 200 and oy >= 100:        # a usable chunk is visible
+                        self.move(wx, wy); placed = True; break
+        except Exception:
+            placed = False
+        if not placed:                                 # first run / off-screen -> center
+            try:
+                g = QApplication.primaryScreen().availableGeometry()
+                self.move(g.x() + (g.width() - self.width()) // 2,
+                          g.y() + (g.height() - self.height()) // 2)
+            except Exception:
+                pass
+
     def _teardown(self):
         global running
         running = False
@@ -2236,6 +2299,7 @@ class ControlHub(FramelessWindow):
         try:
             if not self.isMaximized() and self.width() > 200 and self.height() > 200:
                 global_settings["win_w"] = self.width(); global_settings["win_h"] = self.height()
+                global_settings["win_x"] = self.x(); global_settings["win_y"] = self.y()
             global_settings["last_tab"] = self.settings.pivot.currentRouteKey() or global_settings.get("last_tab", "wheel")
         except Exception: pass
         save_settings()
@@ -2258,6 +2322,26 @@ def main():
     saved = global_settings.get("language")
     if saved in LANG:
         CURRENT_LANG = saved
+    # --- UI scaling (must be set BEFORE QApplication) ---
+    try:
+        s = int(global_settings.get("ui_scale", 100)) / 100.0
+        if s and s != 1.0:
+            # the scale multiplies the window's minimum size too, so cap it to
+            # what the physical screen can actually show (otherwise the window
+            # overflows the screen and the layout collapses / overlaps).
+            sw, sh = _screen_px()
+            BASE_W, BASE_H = 1230.0, 770.0      # app's natural minimum (logical px)
+            max_s = min((sw * 0.96) / BASE_W, (sh * 0.92) / BASE_H)
+            eff = max(1.0, min(s, max_s))
+            if abs(eff - 1.0) > 0.01:
+                os.environ["QT_SCALE_FACTOR"] = f"{eff:.4f}"
+    except Exception:
+        pass
+    try:
+        QApplication.setHighDpiScaleFactorRoundingPolicy(
+            Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
+    except Exception:
+        pass
     app = QApplication(sys.argv)
     if os.path.exists(WHEEL_PNG):
         app.setWindowIcon(QIcon(WHEEL_PNG))

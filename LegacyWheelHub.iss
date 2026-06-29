@@ -1,22 +1,25 @@
-; Inno Setup script - Legacy Wheel Hub
+; Inno Setup script - Legacy Wheel Hub  (ONEDIR build)
 ; Non-commercial use only
 ;
 ; NOTE: Steering-wheel DRIVERS are NOT bundled (licensing). Users install them
 ; separately from:  https://github.com/Mysli0210/Legacy-Logitech-wheels-for-W11
 ; This installer ships only the application.
 ;
-; BUILD: place this .iss together with LegacyWheelHub.exe, wheel.png, wheel.ico
-; and README.txt in one folder, then Compile. The installer is written to the
-; "Output" subfolder next to this script.
+; BUILD ORDER:
+;   1) Run build.bat  -> produces  dist\LegacyWheelHub\  (onedir, fast startup)
+;   2) Put this .iss in the SAME folder as build.bat / wheel.png / wheel.ico /
+;      README.txt, then Compile. The installer is written to the "Output"
+;      subfolder next to this script.
 
 #define MyAppName "Legacy Wheel Hub"
-#define MyAppVersion "1.0"
+#define MyAppVersion "1.0.1"
 #define MyAppPublisher "Sadooo"
 #define MyAppURL "https://github.com/Sadooo27/legacy-wheel-hub"
 #define MyAppExeName "LegacyWheelHub.exe"
-#define MySrc "."
+#define MyDist "dist\LegacyWheelHub"
 
 [Setup]
+; Keep a NEW unique AppId so old "DFGT Control Hub" installs aren't confused.
 AppId={{8F2A6B14-3C77-4E59-9D21-0B6E4A1F77C2}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
@@ -27,18 +30,17 @@ AppSupportURL={#MyAppURL}
 AppUpdatesURL={#MyAppURL}
 DefaultDirName={autopf}\{#MyAppName}
 UninstallDisplayName={#MyAppName}
-UninstallDisplayIcon={app}\wheel.ico
+UninstallDisplayIcon={app}\{#MyAppExeName}
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 DisableProgramGroupPage=yes
 ;PrivilegesRequired=lowest
 OutputDir=Output
 OutputBaseFilename=LegacyWheelHub_Setup
-SetupIconFile={#MySrc}\wheel.ico
+SetupIconFile=wheel.ico
 SolidCompression=yes
 WizardStyle=modern
-; Make Add/Remove Programs + file metadata read "Legacy Wheel Hub"
-VersionInfoVersion=1.0.0.0
+VersionInfoVersion=1.0.1.0
 VersionInfoProductName={#MyAppName}
 VersionInfoCompany={#MyAppPublisher}
 VersionInfoDescription={#MyAppName} Setup
@@ -50,10 +52,12 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-Source: "{#MySrc}\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{#MySrc}\wheel.png";       DestDir: "{app}"; Flags: ignoreversion
-Source: "{#MySrc}\wheel.ico";       DestDir: "{app}"; Flags: ignoreversion
-Source: "{#MySrc}\README.txt";      DestDir: "{app}"; Flags: ignoreversion
+; The whole onedir build (LegacyWheelHub.exe + _internal\ ...).
+Source: "{#MyDist}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+; Assets the app + installer reference directly next to the exe.
+Source: "wheel.png";  DestDir: "{app}"; Flags: ignoreversion
+Source: "wheel.ico";  DestDir: "{app}"; Flags: ignoreversion
+Source: "README.txt"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\wheel.ico"
