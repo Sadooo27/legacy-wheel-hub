@@ -1,5 +1,9 @@
 # Legacy Wheel Hub
-
+[![Latest release](https://img.shields.io/github/v/release/Sadooo27/legacy-wheel-hub?label=release)](https://github.com/Sadooo27/legacy-wheel-hub/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/Sadooo27/legacy-wheel-hub/total)](https://github.com/Sadooo27/legacy-wheel-hub/releases)
+[![License: GPL-3.0](https://img.shields.io/github/license/Sadooo27/legacy-wheel-hub)](LICENSE)
+![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078D6)
+![Made with Python](https://img.shields.io/badge/Python-3.x-3776AB?logo=python&logoColor=white)
 A lightweight control panel for **legacy Logitech force-feedback wheels**
 (Driving Force GT and G27) — a free, open alternative to Logitech Gaming
 Software. Set rotation range and FFB strength,
