@@ -26,7 +26,7 @@ Follow that project's steps, reboot if prompted, then install/run Legacy Wheel H
   Keep `wheel.png` next to `LegacyWheelHub.py`.
 
 ## Features
-- Force Feedback tuning: overall strength (incl. the 101% center-deadzone fix), spring, damper, centering spring
+- Force Feedback tuning: overall strength, spring, damper, centering spring
 - Steering rotation range (40–900°) with quick presets
 - Live telemetry: rotating wheel, steering angle, pedals (clutch/brake/throttle)
 - Input Monitor: paddles, buttons, D-pad, face buttons, H-pattern shifter, LED greeting test
@@ -46,10 +46,7 @@ Follow that project's steps, reboot if prompted, then install/run Legacy Wheel H
    Output: `LegacyWheelHub_Setup.exe`.
 
 ## License
-Released under the **GNU General Public License v3.0 (GPL-3.0)**
-(because it uses PySide6-Fluent-Widgets, which is GPL-3.0). Add the full text
-via GitHub's *Add file → Create new file → `LICENSE` → GNU GPLv3*, or from
-https://www.gnu.org/licenses/gpl-3.0.txt
+Released under the **GNU General Public License v3.0 (GPL-3.0)** (because it uses PySide6-Fluent-Widgets, which is GPL-3.0). See the `LICENSE` file in this repository for the full text, or visit https://www.gnu.org/licenses/gpl-3.0.txt.
 
 ## Disclaimer
 Not affiliated with, endorsed by, or sponsored by Logitech. "Logitech",
