@@ -11,8 +11,10 @@ Built with Python, PySide6 and QFluentWidgets.
 ## Screenshots
 <details>
   <summary>Click to view screenshots</summary>
-<img width="1366" height="860" alt="image1" src="https://github.com/user-attachments/assets/c5db1a10-4873-4958-8944-d1e78d086bcd" />
-<img width="1366" height="860" alt="image2" src="https://github.com/user-attachments/assets/a15ee3ff-5826-4790-971e-4c8549470a8c" />
+<img width="1366" height="860" alt="image1" src="https://github.com/user-attachments/assets/f0b93bdd-8ab3-4b5f-9348-ee10c2bf5010" />
+<img width="1366" height="860" alt="image2" src="https://github.com/user-attachments/assets/e7199cff-5ff3-44be-9432-f7eab53b194a" />
+<img width="1366" height="860" alt="image3" src="https://github.com/user-attachments/assets/99d9caba-3eca-43b9-99e3-d3b28b393337" />
+<img width="1366" height="860" alt="image4" src="https://github.com/user-attachments/assets/caae83fe-a057-45a1-b666-9b29f92f47b2" />
 
 </details>
 
