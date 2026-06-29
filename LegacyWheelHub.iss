@@ -4,16 +4,19 @@
 ; NOTE: Steering-wheel DRIVERS are NOT bundled (licensing). Users install them
 ; separately from:  https://github.com/Mysli0210/Legacy-Logitech-wheels-for-W11
 ; This installer ships only the application.
+;
+; BUILD: place this .iss together with LegacyWheelHub.exe, wheel.png, wheel.ico
+; and README.txt in one folder, then Compile. The installer is written to the
+; "Output" subfolder next to this script.
 
 #define MyAppName "Legacy Wheel Hub"
 #define MyAppVersion "1.0"
 #define MyAppPublisher "Sadooo"
-#define MyAppURL "https://github.com/your-username/legacy-wheel-hub"
+#define MyAppURL "https://github.com/Sadooo27/legacy-wheel-hub"
 #define MyAppExeName "LegacyWheelHub.exe"
-#define MySrc "E:\Legacy Wheel Hub Sources"
+#define MySrc "."
 
 [Setup]
-; Keep a NEW unique AppId so old "DFGT Control Hub" installs aren't confused.
 AppId={{8F2A6B14-3C77-4E59-9D21-0B6E4A1F77C2}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
@@ -29,7 +32,7 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 DisableProgramGroupPage=yes
 ;PrivilegesRequired=lowest
-OutputDir=C:\Users\saade\Downloads
+OutputDir=Output
 OutputBaseFilename=LegacyWheelHub_Setup
 SetupIconFile={#MySrc}\wheel.ico
 SolidCompression=yes
