@@ -2,7 +2,7 @@
 
 A lightweight control panel for **legacy Logitech force-feedback wheels**
 (Driving Force GT and G27) — a free, open alternative to Logitech Gaming
-Software. Set rotation range and FFB strength, fix the center FFB deadzone,
+Software. Set rotation range and FFB strength,
 test motor effects, monitor every button/axis live, and auto-apply your
 settings the moment the wheel finishes calibrating.
 
