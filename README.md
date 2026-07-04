@@ -12,7 +12,9 @@ button and axis live, and have your settings applied automatically the moment
 the wheel finishes calibrating.
 
 <details>
-<summary>📷 Screenshots</summary>
+<summary><h2 style="display:inline">📷 Screenshots</h2></summary>
+
+<br>
 <img width="1280" height="745" alt="image" src="https://github.com/user-attachments/assets/aca9db5e-80c0-4cc2-8346-2ea27a718e7b" />
 <img width="1280" height="745" alt="image" src="https://github.com/user-attachments/assets/163c8d96-4026-40f4-bb69-0d59fa91001e" />
 <img width="1280" height="745" alt="image" src="https://github.com/user-attachments/assets/8638a2f8-b46a-4e36-b441-009137f6df29" />
