@@ -1,27 +1,12 @@
 # Legacy Wheel Hub
-[![Latest release](https://img.shields.io/github/v/release/Sadooo27/legacy-wheel-hub?label=release)](https://github.com/Sadooo27/legacy-wheel-hub/releases/latest)
-[![Downloads](https://img.shields.io/github/downloads/Sadooo27/legacy-wheel-hub/total)](https://github.com/Sadooo27/legacy-wheel-hub/releases)
-[![License: GPL-3.0](https://img.shields.io/github/license/Sadooo27/legacy-wheel-hub)](LICENSE)
-![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078D6)
-![Made with Python](https://img.shields.io/badge/Python-3.x-3776AB?logo=python&logoColor=white)
 
 A lightweight control panel for **legacy Logitech force-feedback wheels**
 (Driving Force GT and G27) — a free, open alternative to Logitech Gaming
-Software. Set rotation range and FFB strength,
+Software. Set rotation range and FFB strength, fix the center FFB deadzone,
 test motor effects, monitor every button/axis live, and auto-apply your
 settings the moment the wheel finishes calibrating.
 
 Built with Python, PySide6 and QFluentWidgets.
-
-## Screenshots
-<details>
-  <summary>Click to view screenshots</summary>
-<img width="1366" height="860" alt="image1" src="https://github.com/user-attachments/assets/f0b93bdd-8ab3-4b5f-9348-ee10c2bf5010" />
-<img width="1366" height="860" alt="image2" src="https://github.com/user-attachments/assets/e7199cff-5ff3-44be-9432-f7eab53b194a" />
-<img width="1366" height="860" alt="image3" src="https://github.com/user-attachments/assets/99d9caba-3eca-43b9-99e3-d3b28b393337" />
-<img width="1366" height="860" alt="image4" src="https://github.com/user-attachments/assets/caae83fe-a057-45a1-b666-9b29f92f47b2" />
-
-</details>
 
 ## 1) Install the wheel drivers first
 This app does **not** bundle any Logitech drivers. On Windows 10/11, install
@@ -41,7 +26,7 @@ Follow that project's steps, reboot if prompted, then install/run Legacy Wheel H
   Keep `wheel.png` next to `LegacyWheelHub.py`.
 
 ## Features
-- Force Feedback tuning: overall strength, spring, damper, centering spring
+- Force Feedback tuning: overall strength (incl. the 101% center-deadzone fix), spring, damper, centering spring
 - Steering rotation range (40–900°) with quick presets
 - Live telemetry: rotating wheel, steering angle, pedals (clutch/brake/throttle)
 - Input Monitor: paddles, buttons, D-pad, face buttons, H-pattern shifter, LED greeting test
@@ -61,7 +46,10 @@ Follow that project's steps, reboot if prompted, then install/run Legacy Wheel H
    Output: `LegacyWheelHub_Setup.exe`.
 
 ## License
-Released under the **GNU General Public License v3.0 (GPL-3.0)** (because it uses PySide6-Fluent-Widgets, which is GPL-3.0). See the `LICENSE` file in this repository for the full text, or visit https://www.gnu.org/licenses/gpl-3.0.txt.
+Released under the **GNU General Public License v3.0 (GPL-3.0)**
+(because it uses PySide6-Fluent-Widgets, which is GPL-3.0). Add the full text
+via GitHub's *Add file → Create new file → `LICENSE` → GNU GPLv3*, or from
+https://www.gnu.org/licenses/gpl-3.0.txt
 
 ## Disclaimer
 Not affiliated with, endorsed by, or sponsored by Logitech. "Logitech",
