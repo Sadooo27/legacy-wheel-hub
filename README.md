@@ -11,6 +11,12 @@ deadzone, apply a **custom LUT curve in any game**, test the motor, watch every
 button and axis live, and have your settings applied automatically the moment
 the wheel finishes calibrating.
 
+<details>
+<summary>📷 Screenshots</summary>
+<img width="1280" height="745" alt="image" src="https://github.com/user-attachments/assets/5995a410-f044-41e2-a191-7190ba7b5911" />
+
+</details>
+
 ## 1) Install the wheel drivers first
 This app does **not** include any Logitech drivers. On Windows 10/11, install
 the community driver package first:
