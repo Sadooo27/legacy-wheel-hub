@@ -1,4 +1,8 @@
 # Legacy Wheel Hub
+[![Latest Release](https://img.shields.io/github/v/release/Sadooo27/legacy-wheel-hub)](../../releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/Sadooo27/legacy-wheel-hub/total)](../../releases)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078D6)
 
 A free control panel for **legacy Logitech force-feedback wheels** (Driving
 Force GT and G27) — a modern, open alternative to Logitech Gaming Software.
