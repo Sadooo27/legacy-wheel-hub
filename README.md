@@ -13,8 +13,11 @@ the wheel finishes calibrating.
 
 <details>
 <summary>📷 Screenshots</summary>
-<img width="1280" height="745" alt="image" src="https://github.com/user-attachments/assets/5995a410-f044-41e2-a191-7190ba7b5911" />
-
+<img width="1280" height="745" alt="image" src="https://github.com/user-attachments/assets/aca9db5e-80c0-4cc2-8346-2ea27a718e7b" />
+<img width="1280" height="745" alt="image" src="https://github.com/user-attachments/assets/163c8d96-4026-40f4-bb69-0d59fa91001e" />
+<img width="1280" height="745" alt="image" src="https://github.com/user-attachments/assets/8638a2f8-b46a-4e36-b441-009137f6df29" />
+<img width="1280" height="745" alt="image" src="https://github.com/user-attachments/assets/d91147e9-2b9b-4f09-ac45-ca7e878aee99" />
+<img width="1280" height="745" alt="image" src="https://github.com/user-attachments/assets/c15f308d-dc58-4898-b2ad-701f689af923" />
 </details>
 
 ## 1) Install the wheel drivers first
