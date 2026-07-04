@@ -24,8 +24,6 @@ Follow that project's steps, reboot if prompted, then continue below.
 > **More info → Run anyway**.
 
 ## Features
-- **Force Feedback tuning** — overall strength (incl. the 101% center-deadzone
-  fix), spring, damper, centering spring
 - **Global LUT (FFB post-processing)** — import an Assetto-Corsa-style `.lut`
   curve and apply it to *any* game, even titles without built-in LUT support,
   for more linear force feedback on gear-driven wheels (see below)
