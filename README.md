@@ -4,6 +4,11 @@
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 ![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078D6)
 
+> ## ⚠️ Fork Notice
+> This repository is **a personal testing and experimental fork** of the original Legacy Wheel Hub project.
+>
+> **All credit for the original project, its design, features, and the vast majority of the work belongs to the original author(s).** This fork exists only for testing, experimenting, and trying out new ideas. If you're looking for the official project, please support and follow the original repository instead.
+
 A free control panel for **legacy Logitech force-feedback wheels** (Driving
 Force GT and G27) — a modern, open alternative to Logitech Gaming Software.
 Set your rotation range and force-feedback strength, remove the center FFB
