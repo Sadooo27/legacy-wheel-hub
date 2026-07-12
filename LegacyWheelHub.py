@@ -1,23 +1,34 @@
 """
 Legacy Logitech Wheels - Control Hub  (PySide6 + QFluentWidgets edition)
 """
-import sys, os, json, math, time, threading
+import sys, os, json, math, time, threading, struct
 
 try:
     import hid
 except ImportError:
-    print("HATA: hidapi yok ->  pip install hidapi"); sys.exit(1)
+    print("ERROR: hidapi is not installed  ->  pip install hidapi"); sys.exit(1)
 
 try:
     import winreg
 except ImportError:
     winreg = None
 
-from PySide6.QtCore import Qt, QTimer, QThread, QRectF, QPointF, Signal, QEvent, QSize, QPropertyAnimation, QEasingCurve, qInstallMessageHandler
-from PySide6.QtGui import QPainter, QColor, QPixmap, QPolygonF, QFont, QPen, QIcon, QAction, QImage
+from PySide6.QtCore import Qt, QTimer, QThread, QRectF, QPointF, Signal, QEvent, QSize, QPropertyAnimation, QEasingCurve, qInstallMessageHandler, QFileInfo
+from PySide6.QtGui import QPainter, QColor, QPixmap, QPolygonF, QFont, QPen, QIcon, QAction, QImage, QPainterPath, QFontMetrics
 from PySide6.QtWidgets import (QApplication, QWidget, QHBoxLayout, QVBoxLayout, QGridLayout,
                                QFrame, QSizePolicy, QScrollArea, QSystemTrayIcon, QMenu,
-                               QStackedWidget, QButtonGroup, QSplitter)
+                               QStackedWidget, QButtonGroup, QSplitter, QFileDialog,
+                               QLabel)
+
+# QFileIconProvider moved between QtWidgets and QtGui across Qt6/PySide6
+# releases; import defensively so a wrong location can never crash startup.
+try:
+    from PySide6.QtGui import QFileIconProvider
+except Exception:
+    try:
+        from PySide6.QtWidgets import QFileIconProvider
+    except Exception:
+        QFileIconProvider = None
 
 from qfluentwidgets import (FluentWindow, NavigationItemPosition, setTheme, Theme, setThemeColor,
                             FluentIcon as FIF, PushButton, PrimaryPushButton, Slider, LineEdit,
@@ -69,6 +80,266 @@ def _find_wheel():
             return p
     return os.path.join(_exe_dir(), "wheel.png")
 
+
+def _lut_dir():
+    """Folder that holds imported .lut files AND the proxy log.
+
+    Lives inside the application folder (next to the exe) so everything is
+    self-contained and portable, not under %LOCALAPPDATA%. Falls back to the
+    writable data dir only if the exe folder cannot be written to.
+    """
+    d = os.path.join(_exe_dir(), "luts")
+    try:
+        os.makedirs(d, exist_ok=True)
+        # quick writability probe
+        t = os.path.join(d, ".w")
+        with open(t, "w") as f:
+            f.write("")
+        os.remove(t)
+        return d
+    except Exception:
+        d = os.path.join(_data_dir(), "luts")
+        try:
+            os.makedirs(d, exist_ok=True)
+        except Exception:
+            pass
+        return d
+
+
+def set_active_lut(path):
+    """Tell the dinput8 proxy which LUT to use (and where to log).
+
+    The proxy DLL runs inside game processes and has no idea where LWH is
+    installed, so we publish the active LUT's absolute path and the log
+    directory in the registry (HKCU\\Software\\LegacyWheelHub). The DLL polls
+    these and hot-reloads. Pass path=None/"" to disable (passthrough).
+    """
+    if winreg is None:
+        return
+    try:
+        key = winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\LegacyWheelHub")
+        winreg.SetValueEx(key, "ActiveLut", 0, winreg.REG_SZ, path or "")
+        winreg.SetValueEx(key, "LogDir", 0, winreg.REG_SZ, _lut_dir())
+        winreg.CloseKey(key)
+    except Exception:
+        pass
+
+
+_ICON_PROVIDER = None
+_ICON_CACHE = {}
+
+
+def exe_icon(path, size=20):
+    """Return a QIcon for a game exe (its embedded icon) or None.
+
+    Uses QFileIconProvider, which on Windows returns the exe's real icon.
+    Cached by (path, mtime) so repeated preset redraws are cheap.
+    """
+    global _ICON_PROVIDER
+    if not path or not os.path.isfile(path) or QFileIconProvider is None:
+        return None
+    try:
+        mtime = os.path.getmtime(path)
+    except Exception:
+        mtime = 0
+    ck = (path, size, mtime)
+    if ck in _ICON_CACHE:
+        return _ICON_CACHE[ck]
+    try:
+        if _ICON_PROVIDER is None:
+            _ICON_PROVIDER = QFileIconProvider()
+        ic = _ICON_PROVIDER.icon(QFileInfo(path))
+        if ic.isNull():
+            ic = None
+    except Exception:
+        ic = None
+    _ICON_CACHE[ck] = ic
+    return ic
+
+
+def parse_lut_file(path):
+    """Parse an AC-style .lut into a list of (input, output) points in 0..1.
+
+    Accepts '|', ',', ';' or whitespace separators, skips comments, and
+    auto-normalizes 0..100 scaled files to 0..1. Returns [] on failure.
+    """
+    pts = []
+    maxv = 0.0
+    try:
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line[0] in ";#":
+                    continue
+                for sep in "|,;\t":
+                    line = line.replace(sep, " ")
+                parts = line.split()
+                if len(parts) >= 2:
+                    try:
+                        x = float(parts[0]); y = float(parts[1])
+                    except ValueError:
+                        continue
+                    pts.append((x, y))
+                    maxv = max(maxv, x, y)
+    except Exception:
+        return []
+    if len(pts) < 2:
+        return []
+    if maxv > 1.5:                     # looks like 0..100 -> normalize
+        pts = [(x / 100.0, y / 100.0) for x, y in pts]
+    pts.sort(key=lambda p: p[0])
+    return pts
+
+
+# ---- dinput8 proxy installer (per-game DLL placement) -------------------
+
+PROXY_DLL = "dinput8.dll"
+PROXY_MARKER = ".lwh_proxy"   # marks a dinput8.dll that WE placed
+
+
+def _proxy_assets_dir():
+    """Folder holding the bundled proxy DLLs: assets/proxy/{x86,x64}/dinput8.dll"""
+    for base in (_resource_dir(), _exe_dir(), os.path.dirname(os.path.abspath(__file__))):
+        d = os.path.join(base, "assets", "proxy")
+        if os.path.isdir(d):
+            return d
+    return os.path.join(_resource_dir(), "assets", "proxy")
+
+
+def exe_bitness(path):
+    """Return 'x86', 'x64' or None by reading the PE IMAGE_FILE_HEADER.Machine."""
+    try:
+        with open(path, "rb") as f:
+            if f.read(2) != b"MZ":
+                return None
+            f.seek(0x3C)
+            (pe_off,) = struct.unpack("<I", f.read(4))
+            f.seek(pe_off)
+            if f.read(4) != b"PE\x00\x00":
+                return None
+            (machine,) = struct.unpack("<H", f.read(2))
+    except Exception:
+        return None
+    if machine == 0x014C:
+        return "x86"
+    if machine in (0x8664, 0xAA64):
+        return "x64"
+    return None
+
+
+def resolve_game_exe(exe_path):
+    """For UE/launcher games, try to find the real ...-Shipping.exe.
+
+    A launcher usually sits in the game root while the real executable lives in
+    <Project>\\Binaries\\Win64\\<Name>-Win64-Shipping.exe. We therefore search
+    DOWN into subfolders (the root's Binaries and each immediate subproject's
+    Binaries) as well as the selected folder itself. If nothing is found we
+    just return the given exe so the user can point us at the right one.
+    """
+    if not exe_path or not os.path.isfile(exe_path):
+        return exe_path
+    name = os.path.basename(exe_path).lower()
+    if name.endswith("-shipping.exe") or "shipping" in name:
+        return exe_path
+
+    root = os.path.dirname(exe_path)
+    stem = os.path.splitext(os.path.basename(exe_path))[0].lower()  # e.g. "jdm"
+
+    def _find_in(base):
+        for sub in ("Win64", "WinGDK", "Win32"):
+            bindir = os.path.join(base, "Binaries", sub)
+            if os.path.isdir(bindir):
+                try:
+                    files = os.listdir(bindir)
+                except Exception:
+                    continue
+                hits = [f for f in files if f.lower().endswith("-shipping.exe")]
+                if not hits:
+                    hits = [f for f in files
+                            if "shipping" in f.lower() and f.lower().endswith(".exe")]
+                if hits:
+                    # prefer the one whose name matches the launcher/project name
+                    # (JDM.exe -> JDM-Win64-Shipping.exe), else the first sorted.
+                    pref = [f for f in hits if f.lower().startswith(stem)]
+                    return os.path.join(bindir, sorted(pref or hits)[0])
+        return None
+
+    # 1) root/Binaries/...
+    hit = _find_in(root)
+    if hit:
+        return hit
+    # 2) root/<subproject>/Binaries/...  (the common UE layout).
+    #    Skip "Engine" — it only ever holds engine tools (UnrealEditor,
+    #    CrashReportClient), never the game itself.
+    try:
+        subs = sorted(os.listdir(root))
+        # try a subfolder matching the launcher name first (JDM\ for JDM.exe)
+        subs.sort(key=lambda e: (e.lower() != stem, e.lower()))
+        for entry in subs:
+            if entry.lower() == "engine":
+                continue
+            sub = os.path.join(root, entry)
+            if os.path.isdir(sub):
+                hit = _find_in(sub)
+                if hit:
+                    return hit
+    except Exception:
+        pass
+    # nothing found -> caller/user handles it manually
+    return exe_path
+
+
+def install_proxy_for(exe_path, overwrite_foreign=False):
+    """Copy the correct-bitness dinput8.dll next to the game exe.
+
+    Returns (ok: bool, message_key_or_text). Leaves a marker file so we can
+    safely remove only DLLs we placed. If a foreign dinput8.dll already exists
+    and overwrite_foreign is False, returns ('foreign', dir) so the caller can
+    ask the user.
+    """
+    real = resolve_game_exe(exe_path)
+    if not real or not os.path.isfile(real):
+        return (False, "proxy.err_noexe")
+    arch = exe_bitness(real)
+    if arch not in ("x86", "x64"):
+        return (False, "proxy.err_arch")
+    src = os.path.join(_proxy_assets_dir(), arch, PROXY_DLL)
+    if not os.path.isfile(src):
+        return (False, "proxy.err_asset")
+    exe_dir = os.path.dirname(real)
+    dst = os.path.join(exe_dir, PROXY_DLL)
+    marker = os.path.join(exe_dir, PROXY_MARKER)
+    if os.path.isfile(dst) and not os.path.isfile(marker) and not overwrite_foreign:
+        return ("foreign", exe_dir)
+    try:
+        with open(src, "rb") as s, open(dst, "wb") as d:
+            d.write(s.read())
+        with open(marker, "w", encoding="utf-8") as m:
+            m.write(f"Legacy Wheel Hub proxy ({arch})\n")
+    except Exception:
+        return (False, "proxy.err_write")
+    return (True, exe_dir)
+
+
+def uninstall_proxy_for(exe_path, force=False):
+    """Remove the dinput8.dll we installed next to the game exe (marker-guarded)."""
+    real = resolve_game_exe(exe_path)
+    if not real:
+        return False
+    exe_dir = os.path.dirname(real)
+    dst = os.path.join(exe_dir, PROXY_DLL)
+    marker = os.path.join(exe_dir, PROXY_MARKER)
+    if os.path.isfile(dst) and not os.path.isfile(marker) and not force:
+        return False           # not ours -> leave it
+    try:
+        if os.path.isfile(dst):
+            os.remove(dst)
+        if os.path.isfile(marker):
+            os.remove(marker)
+    except Exception:
+        return False
+    return True
+
 def _screen_px():
     # primary-screen physical size, queried BEFORE QApplication exists.
     ov = os.environ.get("LWH_SCREEN")          # test override "WxH"
@@ -93,7 +364,7 @@ WHEEL_PNG = _find_wheel()
 SETTINGS_FILE = os.path.join(_data_dir(), "settings.json")
 STEER_CENTER = 8192
 ACCENT_FALLBACK = "#ff6a1a"
-HUB_VERSION = "v1.0.1"
+HUB_VERSION = "v1.1.1"
 AUTHOR = "Sadooo"
 
 
@@ -207,6 +478,30 @@ LANG = {
         "ui.telemetry": "LIVE TELEMETRY", "ui.center": "Center",
         "ui.apply": "APPLY", "conn.connected": "Connected", "conn.test": "Test Mode",
         "tab.wheel": "WHEEL SETTINGS", "tab.ffb": "FFB TEST", "tab.input": "INPUT MONITOR",
+        "tab.lut": "LUT",
+        "lut.sec": "FFB POST-PROCESSING", "lut.enable": "Enable FFB post-processing",
+        "lut.enable_h": "Pass the game's force feedback through the selected LUT curve in all games (via the dinput8 proxy).",
+        "lut.select": "LUT curve", "lut.import": "Import LUT", "lut.delete": "Delete LUT", "lut.none": "(none)",
+        "lut.del_title": "Delete LUT", "lut.del_body": "Delete the LUT file \u201c{}\u201d from disk? This cannot be undone.",
+        "lut.deleted": "LUT deleted",
+        "lut.empty": "No LUT files yet. Click \u201cImport LUT\u201d to add one.",
+        "lut.warn": "\u26a0  Do not use in online games. If you do, it\u2019s at your own risk!",
+        "lut.global_notice": "LUT is set per game. Create a game profile (\uff0b in Presets), choose its .exe, then pick its LUT here. The Global profile does not apply a LUT.",
+        "lut.axis_in": "Input", "lut.axis_out": "Output",
+        "lut.imported": "LUT imported", "lut.import_fail": "Could not import LUT",
+        "lut.game": "GAME", "lut.exe": "Game executable", "lut.exe_pick": "Choose\u2026",
+        "lut.exe_none": "No game selected",
+        "prof.edit": "Edit profile", "prof.exe": "Game executable",
+        "prof.exe_hint": "For UE launcher games, pick the real ...-Shipping.exe if it isn't found automatically.",
+        "prof.logo": "Icon (from an .exe)", "prof.logo_pick": "Choose icon\u2026",
+        "prof.exe_pick": "Choose game\u2026", "prof.name_lbl": "Profile name",
+        "proxy.installed": "Proxy installed", "proxy.removed": "Proxy removed",
+        "proxy.installed_body": "dinput8.dll placed next to the game.",
+        "proxy.err_noexe": "Game exe not found.", "proxy.err_arch": "Unsupported architecture.",
+        "proxy.err_asset": "Bundled proxy DLL missing (assets/proxy).",
+        "proxy.err_write": "Could not write DLL (is the game running? folder writable?).",
+        "proxy.foreign_title": "Existing dinput8.dll",
+        "proxy.foreign_body": "This folder already has a dinput8.dll not installed by LWH (another mod/wrapper). Overwrite it?",
         "tab.info": "INFO", "wheel.sec_ffb": "FORCE FEEDBACK", "wheel.sec_steer": "STEERING SETTINGS",
         "ffb.reset": "Reset Driver FFB", "ffb.reset_h": "Deletes all driver FFB registry overrides written by this app.",
         "set.title": "SETTINGS", "set.appearance": "APPEARANCE", "set.general": "GENERAL", "set.testing": "TESTING",
@@ -284,6 +579,30 @@ LANG = {
         "ui.add_profile": "+  Oyun Profili Ekle", "ui.autoload": "Ba\u011flan\u0131nca otomatik y\u00fckle",
         "ui.telemetry": "CANLI TELEMETR\u0130", "ui.center": "Merkezle",
         "ui.apply": "UYGULA", "conn.connected": "Ba\u011fl\u0131", "conn.test": "Test Modu",
+        "tab.lut": "LUT",
+        "lut.sec": "FFB SON \u0130\u015eLEME", "lut.enable": "FFB son i\u015flemeyi etkinle\u015ftir",
+        "lut.enable_h": "Oyunun force feedback'ini se\u00e7ili LUT e\u011frisinden ge\u00e7irerek t\u00fcm oyunlarda uygular (dinput8 proxy ile).",
+        "lut.select": "LUT e\u011frisi", "lut.import": "LUT \u0130\u00e7e Aktar", "lut.delete": "LUT Sil", "lut.none": "(yok)",
+        "lut.del_title": "LUT Sil", "lut.del_body": "\u201c{}\u201d LUT dosyas\u0131 diskten silinsin mi? Bu geri al\u0131namaz.",
+        "lut.deleted": "LUT silindi",
+        "lut.empty": "Hen\u00fcz LUT dosyas\u0131 yok. Eklemek i\u00e7in \u201cLUT \u0130\u00e7e Aktar\u201d\u2019a t\u0131kla.",
+        "lut.warn": "\u26a0  \u00c7evrimi\u00e7i oyunlarda kullanmay\u0131n. Kullan\u0131rsan\u0131z risk size aittir!",
+        "lut.global_notice": "LUT her oyun i\u00e7in ayr\u0131 ayarlan\u0131r. Bir oyun profili olu\u015fturup (Presets'te \uff0b) exe'sini se\u00e7in, sonra LUT'unu buradan se\u00e7in. Global profil LUT uygulamaz.",
+        "lut.axis_in": "Giri\u015f", "lut.axis_out": "\u00c7\u0131k\u0131\u015f",
+        "lut.imported": "LUT i\u00e7e aktar\u0131ld\u0131", "lut.import_fail": "LUT i\u00e7e aktar\u0131lamad\u0131",
+        "lut.game": "OYUN", "lut.exe": "Oyun exe dosyas\u0131", "lut.exe_pick": "Se\u00e7\u2026",
+        "lut.exe_none": "Oyun se\u00e7ilmedi",
+        "prof.edit": "Profili d\u00fczenle", "prof.exe": "Oyun exe dosyas\u0131",
+        "prof.exe_hint": "UE launcher'l\u0131 oyunlarda otomatik bulunamazsa ger\u00e7ek ...-Shipping.exe'yi se\u00e7in.",
+        "prof.logo": "Simge (bir .exe'den)", "prof.logo_pick": "Simge se\u00e7\u2026",
+        "prof.exe_pick": "Oyun se\u00e7\u2026", "prof.name_lbl": "Profil ad\u0131",
+        "proxy.installed": "Proxy kuruldu", "proxy.removed": "Proxy kald\u0131r\u0131ld\u0131",
+        "proxy.installed_body": "dinput8.dll oyunun yan\u0131na kopyaland\u0131.",
+        "proxy.err_noexe": "Oyun exe'si bulunamad\u0131.", "proxy.err_arch": "Desteklenmeyen mimari.",
+        "proxy.err_asset": "G\u00f6m\u00fcl\u00fc proxy DLL'i yok (assets/proxy).",
+        "proxy.err_write": "DLL yaz\u0131lamad\u0131 (oyun a\u00e7\u0131k m\u0131? klas\u00f6r yaz\u0131labilir mi?).",
+        "proxy.foreign_title": "Mevcut dinput8.dll",
+        "proxy.foreign_body": "Bu klas\u00f6rde LWH'nin kurmad\u0131\u011f\u0131 bir dinput8.dll var (ba\u015fka bir mod/wrapper). \u00dczerine yaz\u0131ls\u0131n m\u0131?",
         "tab.wheel": "D\u0130REKS\u0130YON", "tab.ffb": "FFB TEST\u0130", "tab.input": "G\u0130R\u0130\u015e \u0130ZLEY\u0130C\u0130",
         "tab.info": "B\u0130LG\u0130", "wheel.sec_ffb": "KUVVET GER\u0130 B\u0130LD\u0130R\u0130M\u0130", "wheel.sec_steer": "D\u0130REKS\u0130YON AYARLARI",
         "ffb.reset": "S\u00fcr\u00fcc\u00fc FFB S\u0131f\u0131rla", "ffb.reset_h": "Bu uygulaman\u0131n yazd\u0131\u011f\u0131 t\u00fcm s\u00fcr\u00fcc\u00fc FFB registry de\u011ferlerini siler.",
@@ -363,6 +682,30 @@ LANG = {
         "ui.telemetry": "LIVE-TELEMETRIE", "ui.center": "Zentrieren",
         "ui.apply": "ANWENDEN", "conn.connected": "Verbunden", "conn.test": "Testmodus",
         "tab.wheel": "LENKRAD", "tab.ffb": "FFB-TEST", "tab.input": "EINGABE-MONITOR",
+        "tab.lut": "LUT",
+        "lut.sec": "FFB-NACHBEARBEITUNG", "lut.enable": "FFB-Nachbearbeitung aktivieren",
+        "lut.enable_h": "Leitet das Force Feedback des Spiels durch die gew\u00e4hlte LUT-Kurve in allen Spielen (\u00fcber den dinput8-Proxy).",
+        "lut.select": "LUT-Kurve", "lut.import": "LUT importieren", "lut.delete": "LUT l\u00f6schen", "lut.none": "(keine)",
+        "lut.del_title": "LUT l\u00f6schen", "lut.del_body": "LUT-Datei \u201c{}\u201d von der Festplatte l\u00f6schen? Das kann nicht r\u00fcckg\u00e4ngig gemacht werden.",
+        "lut.deleted": "LUT gel\u00f6scht",
+        "lut.empty": "Noch keine LUT-Dateien. Klicke auf \u201eLUT importieren\u201c.",
+        "lut.warn": "\u26a0  Nicht in Online-Spielen verwenden. Wenn doch, auf eigenes Risiko!",
+        "lut.global_notice": "LUT wird pro Spiel festgelegt. Erstelle ein Spielprofil (\uff0b in Presets), w\u00e4hle seine .exe und dann hier seine LUT. Das Global-Profil wendet keine LUT an.",
+        "lut.axis_in": "Eingang", "lut.axis_out": "Ausgang",
+        "lut.imported": "LUT importiert", "lut.import_fail": "LUT konnte nicht importiert werden",
+        "lut.game": "SPIEL", "lut.exe": "Spiel-Datei", "lut.exe_pick": "W\u00e4hlen\u2026",
+        "lut.exe_none": "Kein Spiel gew\u00e4hlt",
+        "prof.edit": "Profil bearbeiten", "prof.exe": "Spiel-Datei",
+        "prof.exe_hint": "Bei UE-Launcher-Spielen die echte ...-Shipping.exe w\u00e4hlen, falls nicht automatisch gefunden.",
+        "prof.logo": "Symbol (aus einer .exe)", "prof.logo_pick": "Symbol w\u00e4hlen\u2026",
+        "prof.exe_pick": "Spiel w\u00e4hlen\u2026", "prof.name_lbl": "Profilname",
+        "proxy.installed": "Proxy installiert", "proxy.removed": "Proxy entfernt",
+        "proxy.installed_body": "dinput8.dll neben dem Spiel platziert.",
+        "proxy.err_noexe": "Spiel-Exe nicht gefunden.", "proxy.err_arch": "Nicht unterst\u00fctzte Architektur.",
+        "proxy.err_asset": "Geb\u00fcndelte Proxy-DLL fehlt (assets/proxy).",
+        "proxy.err_write": "DLL konnte nicht geschrieben werden (l\u00e4uft das Spiel? Ordner beschreibbar?).",
+        "proxy.foreign_title": "Vorhandene dinput8.dll",
+        "proxy.foreign_body": "In diesem Ordner liegt bereits eine nicht von LWH installierte dinput8.dll (anderer Mod/Wrapper). \u00dcberschreiben?",
         "tab.info": "INFO", "wheel.sec_ffb": "FORCE FEEDBACK", "wheel.sec_steer": "LENKEINSTELLUNGEN",
         "ffb.reset": "Treiber-FFB zur\u00fccksetzen", "ffb.reset_h": "L\u00f6scht alle von dieser App geschriebenen FFB-Registry-Werte.",
         "set.title": "EINSTELLUNGEN", "set.appearance": "DARSTELLUNG", "set.general": "ALLGEMEIN", "set.testing": "TEST",
@@ -397,7 +740,9 @@ def load_settings():
     base = {"theme": "dark", "language": "en", "last_device": None, "auto_load": False,
             "minimize_to_tray": False, "win_w": 1366, "win_h": 720, "last_tab": "wheel", "ui_scale": 100,
             "profiles": {"Global": {"angle": 900, "di_gain": 101, "di_spring": 0,
-                                    "di_damper": 0, "di_center": 0, "di_persist": False}},
+                                    "di_damper": 0, "di_center": 0, "di_persist": False,
+                                    "exe_path": "", "logo_exe": "", "lut_file": "",
+                                    "lut_enabled": False}},
             "selected_profile": "Global"}
     try:
         with open(SETTINGS_FILE) as f:
@@ -986,6 +1331,99 @@ def _name_dialog(title, default, parent):
     return txt.strip() if ok else None
 
 
+def _preset_edit_dialog(title, cur_name, cur_exe, cur_logo, parent, allow_rename=True):
+    """Combined profile editor: name + game exe + icon source.
+
+    Returns (name, exe_path, logo_exe) or None if cancelled.
+    logo_exe defaults to exe_path when the user didn't pick a separate icon.
+    """
+    if MessageBoxBase is None:
+        # minimal fallback: just rename
+        n = _name_dialog(title, cur_name, parent) if allow_rename else cur_name
+        return (n, cur_exe, cur_logo) if n else None
+
+    exe_filter = "Programs (*.exe);;All files (*.*)"
+
+    class _D(MessageBoxBase):
+        def __init__(self, p):
+            super().__init__(p)
+            self._exe = cur_exe or ""
+            self._logo = cur_logo or ""
+            self.t = SubtitleLabel(title, self)
+            self.viewLayout.addWidget(self.t)
+
+            self.name_lbl = CaptionLabel(tr("prof.name_lbl"))
+            self.edit = LineEdit(self); self.edit.setText(cur_name)
+            self.edit.setClearButtonEnabled(True)
+            self.edit.setEnabled(allow_rename)
+            self.viewLayout.addWidget(self.name_lbl)
+            self.viewLayout.addWidget(self.edit)
+
+            # game exe row
+            self.exe_lbl = CaptionLabel(tr("prof.exe"))
+            self.viewLayout.addWidget(self.exe_lbl)
+            erow = QHBoxLayout(); erow.setSpacing(8)
+            self.exe_field = LineEdit(self); self.exe_field.setReadOnly(True)
+            self.exe_field.setText(os.path.basename(self._exe) if self._exe else "")
+            self.exe_field.setPlaceholderText(tr("lut.exe_none"))
+            self.btn_exe = PushButton(tr("prof.exe_pick"))
+            self.btn_exe.clicked.connect(self._pick_exe)
+            erow.addWidget(self.exe_field, 1); erow.addWidget(self.btn_exe)
+            self.viewLayout.addLayout(erow)
+            self.exe_hint = CaptionLabel(tr("prof.exe_hint"))
+            self.exe_hint.setWordWrap(True)
+            self.viewLayout.addWidget(self.exe_hint)
+
+            # icon row (with preview)
+            self.logo_lbl = CaptionLabel(tr("prof.logo"))
+            self.viewLayout.addWidget(self.logo_lbl)
+            lrow = QHBoxLayout(); lrow.setSpacing(8)
+            self.preview = QLabel(); self.preview.setFixedSize(24, 24)
+            self.preview.setAlignment(Qt.AlignCenter)
+            self.logo_field = LineEdit(self); self.logo_field.setReadOnly(True)
+            self.btn_logo = PushButton(tr("prof.logo_pick"))
+            self.btn_logo.clicked.connect(self._pick_logo)
+            lrow.addWidget(self.preview, 0)
+            lrow.addWidget(self.logo_field, 1); lrow.addWidget(self.btn_logo)
+            self.viewLayout.addLayout(lrow)
+
+            self.yesButton.setText(tr("dlg.ok"))
+            self.cancelButton.setText(tr("dlg.cancel"))
+            self.widget.setMinimumWidth(420)
+            self._refresh_logo()
+
+        def _pick_exe(self):
+            path, _ = QFileDialog.getOpenFileName(self, tr("prof.exe_pick"), "", exe_filter)
+            if path:
+                self._exe = path
+                self.exe_field.setText(os.path.basename(path))
+                if not self._logo:                 # default icon follows the game
+                    self._refresh_logo()
+
+        def _pick_logo(self):
+            path, _ = QFileDialog.getOpenFileName(self, tr("prof.logo_pick"), "", exe_filter)
+            if path:
+                self._logo = path
+                self._refresh_logo()
+
+        def _refresh_logo(self):
+            src = self._logo or self._exe
+            self.logo_field.setText(os.path.basename(src) if src else "")
+            ic = exe_icon(src)
+            if ic is not None and not ic.isNull():
+                self.preview.setPixmap(ic.pixmap(20, 20))
+            else:
+                self.preview.clear()
+
+    d = _D(parent)
+    if d.exec():
+        name = d.edit.text().strip() if allow_rename else cur_name
+        if not name:
+            return None
+        return (name, d._exe, d._logo)
+    return None
+
+
 def _confirm_dialog(title, body, parent):
     if MessageBox is not None:
         try:
@@ -997,6 +1435,42 @@ def _confirm_dialog(title, body, parent):
             pass
     from PySide6.QtWidgets import QMessageBox
     return QMessageBox.question(parent, title, body) == QMessageBox.Yes
+
+
+_LAST_INFOBAR = None
+
+
+def _defer_infobar(kind, *args, **kwargs):
+    """Show an InfoBar on the next event-loop tick, replacing the previous one.
+
+    Two problems are solved here:
+    1. qfluentwidgets' InfoBar plays a slide animation on show; creating it in
+       the middle of a signal/layout pass logs 'starting an animation without
+       end value'. Deferring one tick lets the layout settle.
+    2. Spamming APPLY (or clicking presets fast) used to STACK InfoBars until
+       they overflowed the screen, which is exactly what triggers that error.
+       We now close the previous InfoBar before showing a new one, so at most
+       one is on screen at a time.
+    """
+    global _LAST_INFOBAR
+
+    def _show():
+        global _LAST_INFOBAR
+        prev = _LAST_INFOBAR
+        if prev is not None:
+            try:
+                prev.close()
+            except Exception:
+                pass
+            _LAST_INFOBAR = None
+        try:
+            _LAST_INFOBAR = getattr(InfoBar, kind)(*args, **kwargs)
+        except Exception:
+            _LAST_INFOBAR = None
+    try:
+        QTimer.singleShot(0, _show)
+    except Exception:
+        _show()
 
 # ====================================================================
 #  CUSTOM UI  (3-column Control Hub layout, frameless window)
@@ -1140,15 +1614,46 @@ class PresetItem(QWidget):
     clicked = Signal(str)
     menu_requested = Signal(str, object)
 
-    def __init__(self, name):
+    def __init__(self, name, icon=None):
         super().__init__()
         self.name = name; self.selected = False
         self.setFixedHeight(42); self.setCursor(Qt.PointingHandCursor)
-        lay = QHBoxLayout(self); lay.setContentsMargins(18, 0, 12, 0)
+        self.setToolTip(name)                       # full name on hover
+        lay = QHBoxLayout(self); lay.setContentsMargins(18, 0, 12, 0); lay.setSpacing(9)
+        self.icon = QLabel()
+        self.icon.setFixedSize(18, 18)
+        self.icon.setAlignment(Qt.AlignCenter)
+        self.set_icon(icon)
+        lay.addWidget(self.icon, 0, Qt.AlignVCenter)
         self.lbl = BodyLabel(name)
+        # let the label take the remaining width and shrink freely so long
+        # names get an ellipsis instead of overflowing the fixed-width panel
+        self.lbl.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         self.lbl.setMinimumWidth(0)
-        lay.addWidget(self.lbl); lay.addStretch(1)
+        lay.addWidget(self.lbl, 1)
         self.set_selected(False)
+
+    def _elide(self):
+        try:
+            w = self.lbl.width() - 2
+            if w < 12:                              # not laid out yet -> full text
+                self.lbl.setText(self.name); return
+            fm = QFontMetrics(self.lbl.font())
+            self.lbl.setText(fm.elidedText(self.name, Qt.ElideRight, w))
+        except Exception:
+            self.lbl.setText(self.name)
+
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        self._elide()
+
+    def set_icon(self, icon):
+        if icon is not None and not icon.isNull():
+            self.icon.setPixmap(icon.pixmap(16, 16))
+            self.icon.setVisible(True)
+        else:
+            self.icon.clear()
+            self.icon.setVisible(False)
 
     def contextMenuEvent(self, e):
         self.menu_requested.emit(self.name, e.globalPos())
@@ -1161,6 +1666,7 @@ class PresetItem(QWidget):
         else:
             f = self.lbl.font(); f.setBold(False); self.lbl.setFont(f)
             self.lbl.setStyleSheet("")
+        self._elide()                               # bold changes text width
         self.update()
 
     def mousePressEvent(self, e):
@@ -1192,7 +1698,7 @@ class PresetsPanel(QWidget):
         tools = QHBoxLayout(); tools.setContentsMargins(0, 2, 0, 0); tools.setSpacing(6)
         self.btn_add = self._mini(FIF.ADD, "New profile", self._add)
         self.btn_dup = self._mini(FIF.COPY, "Duplicate profile", self._duplicate)
-        self.btn_ren = self._mini(FIF.EDIT, "Rename profile", self._rename)
+        self.btn_ren = self._mini(FIF.EDIT, "Edit profile", self._rename)
         self.btn_del = self._mini(FIF.DELETE, "Delete profile", self._delete)
         tools.addStretch(1)
         for b in (self.btn_add, self.btn_dup, self.btn_ren, self.btn_del):
@@ -1221,7 +1727,7 @@ class PresetsPanel(QWidget):
         self.hdr._lbl.setText(tr("ui.presets"))
         self.cb_auto.setText(tr("ui.autoload"))
         self.btn_add.setToolTip(tr("prof.add")); self.btn_dup.setToolTip(tr("prof.dup"))
-        self.btn_ren.setToolTip(tr("prof.ren")); self.btn_del.setToolTip(tr("prof.del"))
+        self.btn_ren.setToolTip(tr("prof.edit")); self.btn_del.setToolTip(tr("prof.del"))
 
     def _selected(self):
         return global_settings.get("selected_profile", "Global")
@@ -1232,7 +1738,9 @@ class PresetsPanel(QWidget):
         self.items = []
         sel = self._selected()
         for name in global_settings["profiles"].keys():
-            it = PresetItem(name)
+            prof = global_settings["profiles"].get(name, {})
+            src = prof.get("logo_exe") or prof.get("exe_path") or ""
+            it = PresetItem(name, exe_icon(src))
             it.clicked.connect(self.select)
             it.menu_requested.connect(self._context_menu)
             it.set_selected(name == sel)
@@ -1258,14 +1766,42 @@ class PresetsPanel(QWidget):
         return n
 
     def _add(self):
-        n = _name_dialog("New Profile", "", self.window())
-        if n and n not in global_settings["profiles"]:
-            base = global_settings["profiles"].get(self._selected(), global_settings["profiles"]["Global"])
-            global_settings["profiles"][n] = dict(base)
-            global_settings["selected_profile"] = n; save_settings()
-            self.reload()
-            if self.on_select:
-                self.on_select(n)
+        res = _preset_edit_dialog(tr("prof.add"), "", "", "", self.window(), allow_rename=True)
+        if not res:
+            return
+        n, exe, logo = res
+        if not n or n in global_settings["profiles"]:
+            return
+        base = global_settings["profiles"].get(self._selected(), global_settings["profiles"]["Global"])
+        prof = dict(base)
+        prof["exe_path"] = exe or ""
+        prof["logo_exe"] = logo or ""
+        global_settings["profiles"][n] = prof
+        global_settings["selected_profile"] = n; save_settings()
+        # install the proxy DLL next to the chosen game
+        self._install_for_profile(exe)
+        self.reload()
+        if self.on_select:
+            self.on_select(n)
+
+    def _install_for_profile(self, exe):
+        """Copy the correct dinput8.dll next to `exe`, asking before overwriting
+        a foreign DLL. Shared by add and edit."""
+        if not exe:
+            return
+        ok, info = install_proxy_for(exe)
+        if ok == "foreign":
+            if _confirm_dialog(tr("proxy.foreign_title"), tr("proxy.foreign_body"), self.window()):
+                ok, info = install_proxy_for(exe, overwrite_foreign=True)
+            else:
+                ok = False
+        if ok is True:
+            _defer_infobar("success", tr("proxy.installed"), tr("proxy.installed_body"),
+                            duration=2500, position=InfoBarPosition.TOP, parent=self.window())
+        elif ok is False and info in ("proxy.err_noexe", "proxy.err_arch",
+                                      "proxy.err_asset", "proxy.err_write"):
+            _defer_infobar("warning", tr("proxy.installed"), tr(info), duration=3500,
+                            position=InfoBarPosition.TOP, parent=self.window())
 
     def _duplicate(self):
         cur = self._selected()
@@ -1283,14 +1819,41 @@ class PresetsPanel(QWidget):
         cur = self._selected()
         if cur == "Global":
             return
-        new = _name_dialog("Rename Profile", cur, self.window())
-        if new and new != cur and new not in global_settings["profiles"]:
-            profs = global_settings["profiles"]
+        prof = global_settings["profiles"].get(cur, {})
+        res = _preset_edit_dialog(tr("prof.edit"), cur,
+                                  prof.get("exe_path", ""), prof.get("logo_exe", ""),
+                                  self.window(), allow_rename=True)
+        if not res:
+            return
+        new, exe, logo = res
+        profs = global_settings["profiles"]
+        old_exe = prof.get("exe_path", "")
+        # rename if changed and free
+        if new and new != cur and new not in profs:
             profs[new] = profs.pop(cur)
-            global_settings["selected_profile"] = new; save_settings()
-            self.reload()
-            if self.on_select:
-                self.on_select(new)
+            global_settings["selected_profile"] = new
+            cur = new
+        # store exe / logo on the (possibly renamed) profile
+        p = profs.setdefault(cur, {})
+        p["exe_path"] = exe or ""
+        p["logo_exe"] = logo or ""
+        save_settings()
+
+        # --- keep the dinput8.dll in sync with the chosen game ---
+        # If the game changed, remove the DLL from the old game's folder
+        # (only if no other profile still points there).
+        if old_exe and os.path.normcase(old_exe) != os.path.normcase(exe or ""):
+            still_used = any(
+                os.path.normcase(pp.get("exe_path", "")) == os.path.normcase(old_exe)
+                for nm, pp in profs.items() if nm != cur)
+            if not still_used:
+                uninstall_proxy_for(old_exe)
+        # Install/refresh the DLL next to the newly chosen game.
+        self._install_for_profile(exe)
+
+        self.reload()
+        if self.on_select:
+            self.on_select(global_settings["selected_profile"])
 
     def _delete(self):
         cur = self._selected()
@@ -1298,7 +1861,17 @@ class PresetsPanel(QWidget):
             return
         if _confirm_dialog("Delete Profile",
                            f"Delete profile \u201c{cur}\u201d? This cannot be undone.", self.window()):
-            global_settings["profiles"].pop(cur, None)
+            gone = global_settings["profiles"].pop(cur, None)
+            # clean up the game's dinput8.dll if no other profile still uses it
+            try:
+                exe = (gone or {}).get("exe_path", "")
+                if exe:
+                    still = any(os.path.normcase(pp.get("exe_path", "")) == os.path.normcase(exe)
+                                for pp in global_settings["profiles"].values())
+                    if not still:
+                        uninstall_proxy_for(exe)
+            except Exception:
+                pass
             global_settings["selected_profile"] = "Global"; save_settings()
             self.reload()
             if self.on_select:
@@ -1506,6 +2079,297 @@ class WheelSettingsTab(QWidget):
         self.s_rot.setValue(prof.get("angle", 900))
 
 
+class LutCurveWidget(QWidget):
+    """Content-Manager-style plot of a .lut curve, theme-aware."""
+    def __init__(self):
+        super().__init__()
+        self.points = []            # list of (in, out) in 0..1
+        self.setMinimumHeight(220)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+    def set_points(self, pts):
+        self.points = pts or []
+        self.update()
+
+    def paintEvent(self, e):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        dark = isDarkTheme()
+        grid = QColor(255, 255, 255, 22) if dark else QColor(0, 0, 0, 22)
+        axis = QColor(255, 255, 255, 90) if dark else QColor(0, 0, 0, 90)
+        txt = theme_col("#8a90a0", "#7a808c")
+        ref = QColor(255, 255, 255, 40) if dark else QColor(0, 0, 0, 40)
+
+        m_l, m_b, m_t, m_r = 34, 26, 10, 12
+        w = self.width(); h = self.height()
+        gx = m_l; gy = m_t
+        gw = max(1, w - m_l - m_r); gh = max(1, h - m_t - m_b)
+
+        def X(v): return gx + v * gw
+        def Y(v): return gy + (1.0 - v) * gh
+
+        # grid every 10%
+        p.setPen(QPen(grid, 1))
+        f = QFont(); f.setPointSize(7); p.setFont(f)
+        for i in range(0, 11):
+            t = i / 10.0
+            p.setPen(QPen(grid, 1))
+            p.drawLine(QPointF(X(t), Y(0)), QPointF(X(t), Y(1)))
+            p.drawLine(QPointF(X(0), Y(t)), QPointF(X(1), Y(t)))
+            p.setPen(QPen(txt, 1))
+            if i % 2 == 0:
+                p.drawText(QRectF(X(t) - 14, Y(0) + 4, 28, 14),
+                           Qt.AlignHCenter, str(i * 10))
+                p.drawText(QRectF(0, Y(t) - 7, m_l - 6, 14),
+                           Qt.AlignRight | Qt.AlignVCenter, str(i * 10))
+
+        # axes
+        p.setPen(QPen(axis, 1))
+        p.drawLine(QPointF(X(0), Y(0)), QPointF(X(1), Y(0)))
+        p.drawLine(QPointF(X(0), Y(0)), QPointF(X(0), Y(1)))
+
+        # 1:1 reference (dashed)
+        pen = QPen(ref, 1); pen.setStyle(Qt.DashLine); p.setPen(pen)
+        p.drawLine(QPointF(X(0), Y(0)), QPointF(X(1), Y(1)))
+
+        # axis captions
+        p.setPen(QPen(txt, 1))
+        p.drawText(QRectF(gx, h - 14, gw, 14), Qt.AlignHCenter, tr("lut.axis_in"))
+        p.save(); p.translate(10, gy + gh / 2); p.rotate(-90)
+        p.drawText(QRectF(-40, -8, 80, 14), Qt.AlignHCenter, tr("lut.axis_out"))
+        p.restore()
+
+        # curve
+        if len(self.points) >= 2:
+            path = QPainterPath()
+            first = True
+            for xi, yi in self.points:
+                xi = min(max(xi, 0.0), 1.0); yi = min(max(yi, 0.0), 1.0)
+                pt = QPointF(X(xi), Y(yi))
+                if first:
+                    path.moveTo(pt); first = False
+                else:
+                    path.lineTo(pt)
+            p.setPen(QPen(QColor(ACCENT), 2))
+            p.drawPath(path)
+
+
+class LutTab(QWidget):
+    """LUT selector + live curve preview. Choices are stored per-preset."""
+    def __init__(self, hub):
+        super().__init__()
+        self.hub = hub
+        self._loading = False
+        lay = QVBoxLayout(self); lay.setContentsMargins(2, 4, 12, 8); lay.setSpacing(4)
+
+        self.h_sec = section_header(tr("lut.sec")); lay.addWidget(self.h_sec); lay.addSpacing(4)
+        self.cb_enable = CheckBox(tr("lut.enable"))
+        self.cb_enable.stateChanged.connect(self._on_enable)
+        lay.addWidget(self.cb_enable)
+        self.enable_hint = CaptionLabel(tr("lut.enable_h"))
+        self.enable_hint.setWordWrap(True)
+        lay.addWidget(self.enable_hint)
+        # online-play risk warning (own-risk)
+        self.warn = CaptionLabel(tr("lut.warn"))
+        self.warn.setWordWrap(True)
+        f = self.warn.font(); f.setBold(True); self.warn.setFont(f)
+        self.warn.setStyleSheet("color:#e0a030;")
+        lay.addWidget(self.warn)
+        # shown only for the Global profile: LUT is per-game, make a profile
+        self.global_notice = CaptionLabel(tr("lut.global_notice"))
+        self.global_notice.setWordWrap(True)
+        gf = self.global_notice.font(); gf.setBold(True); self.global_notice.setFont(gf)
+        self.global_notice.setStyleSheet(f"color:{ACCENT};")
+        self.global_notice.setVisible(False)
+        lay.addWidget(self.global_notice)
+        lay.addSpacing(8)
+
+        row = QHBoxLayout(); row.setSpacing(8)
+        self.lbl_sel = StrongBodyLabel(tr("lut.select"))
+        self.combo = ComboBox(); self.combo.setMinimumWidth(200)
+        self.combo.currentIndexChanged.connect(self._on_combo)
+        self.btn_import = PushButton(tr("lut.import"))
+        self.btn_import.clicked.connect(self._import)
+        self.btn_delete = ToolButton(FIF.DELETE)
+        self.btn_delete.setToolTip(tr("lut.delete"))
+        self.btn_delete.clicked.connect(self._delete_lut)
+        row.addWidget(self.lbl_sel); row.addWidget(self.combo, 1)
+        row.addWidget(self.btn_import); row.addWidget(self.btn_delete)
+        lay.addLayout(row); lay.addSpacing(8)
+
+        self.curve = LutCurveWidget()
+        lay.addWidget(self.curve, 1)
+        self.empty_hint = CaptionLabel(tr("lut.empty"))
+        lay.addWidget(self.empty_hint)
+
+        self._refresh_files()
+
+    # ---- data helpers ----
+    def _cur_prof(self):
+        return global_settings["profiles"].setdefault(
+            global_settings.get("selected_profile", "Global"), {})
+
+    def _refresh_files(self, keep=None):
+        """Rebuild the combo from .lut files in the LUT folder."""
+        self._loading = True
+        self.combo.clear()
+        self.combo.addItem(tr("lut.none"))
+        files = []
+        try:
+            for fn in sorted(os.listdir(_lut_dir())):
+                if fn.lower().endswith(".lut"):
+                    files.append(fn)
+        except Exception:
+            pass
+        for fn in files:
+            self.combo.addItem(fn)
+        self._files = files
+        self._loading = False
+        if keep is not None:
+            self.select_file(keep)
+
+    def select_file(self, fname):
+        self._loading = True
+        idx = 0
+        if fname and fname in getattr(self, "_files", []):
+            idx = self.combo.findText(fname)
+            if idx < 0:
+                idx = 0
+        self.combo.setCurrentIndex(max(0, idx))
+        self._loading = False
+        self._draw_current()
+
+    def _current_file(self):
+        if self.combo.currentIndex() <= 0:
+            return ""
+        return self.combo.currentText()
+
+    def _draw_current(self):
+        fn = self._current_file()
+        try:
+            self.btn_delete.setEnabled(bool(fn))
+        except Exception:
+            pass
+        if fn:
+            pts = parse_lut_file(os.path.join(_lut_dir(), fn))
+            self.curve.set_points(pts)
+            self.empty_hint.setVisible(not pts)
+        else:
+            self.curve.set_points([])
+            self.empty_hint.setVisible(not getattr(self, "_files", []))
+
+    def _publish(self):
+        """Push the active preset's LUT choice to the proxy via registry."""
+        prof = self._cur_prof()
+        fn = prof.get("lut_file", "")
+        on = bool(prof.get("lut_enabled", False))
+        if on and fn:
+            set_active_lut(os.path.join(_lut_dir(), fn))
+        else:
+            set_active_lut("")
+
+    # ---- events ----
+    def _on_enable(self, *_):
+        if self._loading:
+            return
+        self._cur_prof()["lut_enabled"] = self.cb_enable.isChecked()
+        save_settings(); self._publish()
+
+    def _on_combo(self, *_):
+        if self._loading:
+            return
+        self._cur_prof()["lut_file"] = self._current_file()
+        save_settings(); self._draw_current(); self._publish()
+
+    def _import(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self.window(), tr("lut.import"), "", "LUT files (*.lut);;All files (*.*)")
+        if not path:
+            return
+        try:
+            dst = os.path.join(_lut_dir(), os.path.basename(path))
+            if os.path.abspath(path) != os.path.abspath(dst):
+                with open(path, "rb") as s, open(dst, "wb") as d:
+                    d.write(s.read())
+            fname = os.path.basename(path)
+            self._refresh_files(keep=fname)
+            self._cur_prof()["lut_file"] = fname
+            self._cur_prof()["lut_enabled"] = True
+            self.cb_enable.setChecked(True)
+            save_settings(); self._publish()
+            _defer_infobar("success", tr("lut.imported"), fname, duration=2000,
+                            position=InfoBarPosition.TOP, parent=self.window())
+        except Exception:
+            _defer_infobar("warning", tr("lut.import_fail"), "", duration=2500,
+                            position=InfoBarPosition.TOP, parent=self.window())
+
+    def _delete_lut(self):
+        fn = self._current_file()
+        if not fn:
+            return
+        if not _confirm_dialog(tr("lut.del_title"), tr("lut.del_body").format(fn),
+                               self.window()):
+            return
+        try:
+            os.remove(os.path.join(_lut_dir(), fn))
+        except Exception:
+            pass
+        # any profile that referenced this LUT falls back to disabled/none
+        for pp in global_settings["profiles"].values():
+            if pp.get("lut_file") == fn:
+                pp["lut_file"] = ""
+                pp["lut_enabled"] = False
+        save_settings()
+        self._refresh_files(keep="")
+        self.cb_enable.setChecked(False)
+        self._publish()
+        _defer_infobar("success", tr("lut.deleted"), fn, duration=2000,
+                        position=InfoBarPosition.TOP, parent=self.window())
+
+    # ---- preset switching / i18n / theme ----
+    def _apply_mode(self, is_global):
+        """Global profile: LUT is per-game, so disable the controls and show a
+        notice telling the user to create a game profile instead."""
+        for w in (self.cb_enable, self.combo, self.btn_import, self.btn_delete):
+            try: w.setEnabled(not is_global)
+            except Exception: pass
+        self.global_notice.setVisible(is_global)
+        self.enable_hint.setVisible(not is_global)
+        self.warn.setVisible(not is_global)
+
+    def load_profile(self, name):
+        is_global = (name == "Global")
+        prof = global_settings["profiles"].get(name, {})
+        self._loading = True
+        self.cb_enable.setChecked(bool(prof.get("lut_enabled", False)) and not is_global)
+        self._loading = False
+        self._apply_mode(is_global)
+        self.select_file(prof.get("lut_file", "") if not is_global else "")
+        if is_global:
+            set_active_lut("")          # the Global profile never applies a LUT
+        else:
+            self._publish()
+
+    def retranslate(self):
+        self.h_sec._lbl.setText(tr("lut.sec"))
+        self.cb_enable.setText(tr("lut.enable"))
+        self.enable_hint.setText(tr("lut.enable_h"))
+        self.warn.setText(tr("lut.warn"))
+        self.global_notice.setText(tr("lut.global_notice"))
+        self.lbl_sel.setText(tr("lut.select"))
+        self.btn_import.setText(tr("lut.import"))
+        self.btn_delete.setToolTip(tr("lut.delete"))
+        self.empty_hint.setText(tr("lut.empty"))
+        # rebuild "(none)" label
+        cur = self._current_file()
+        self._refresh_files(keep=cur)
+        self.curve.update()
+
+    def restyle(self):
+        self.h_sec._bar.setStyleSheet(f"background:{ACCENT}; border-radius:1px;")
+        self.curve.update()
+
+
 class FFBTestTab(QWidget):
     def __init__(self):
         super().__init__()
@@ -1557,7 +2421,7 @@ class FFBTestTab(QWidget):
 
     def _ready(self):
         if dev is None:
-            InfoBar.warning(tr("conn.not_connected"), tr("input.led_nc"), duration=2500,
+            _defer_infobar("warning", tr("conn.not_connected"), tr("input.led_nc"), duration=2500,
                             position=InfoBarPosition.TOP, parent=self.window())
             return False
         return True
@@ -1608,7 +2472,7 @@ class FFBTestTab(QWidget):
 
     def _reset_driver(self):
         restore_ffb_defaults()
-        InfoBar.success("Driver FFB reset", "All app-written FFB registry values were removed.",
+        _defer_infobar("success", "Driver FFB reset", "All app-written FFB registry values were removed.",
                         duration=2500, position=InfoBarPosition.TOP, parent=self.window())
 
 
@@ -1827,7 +2691,7 @@ class SettingsTab(QWidget):
         if self._guard: return
         global_settings["ui_scale"] = int(self.combo_scale.currentData()); save_settings()
         try:
-            InfoBar.success(tr("set.ui_scale"), tr("set.restart_hint"), duration=4000,
+            _defer_infobar("success", tr("set.ui_scale"), tr("set.restart_hint"), duration=4000,
                             position=InfoBarPosition.TOP, parent=self.window())
         except Exception: pass
 
@@ -1884,11 +2748,13 @@ class SettingsColumn(QWidget):
         self.pivot = Pivot(self)
         self.stack = QStackedWidget(self)
         self.wheel_tab = WheelSettingsTab()
+        self.lut_tab = LutTab(hub)
         self.ffb_tab = FFBTestTab()
         self.input_tab = InputMonitorTab()
         self.info_tab = InfoTab()
         self.settings_tab = SettingsTab(hub)
         self._pages = [("wheel", "tab.wheel", self.wheel_tab),
+                       ("lut", "tab.lut", self.lut_tab),
                        ("ffb", "tab.ffb", self.ffb_tab),
                        ("input", "tab.input", self.input_tab),
                        ("info", "tab.info", self.info_tab)]
@@ -1910,9 +2776,28 @@ class SettingsColumn(QWidget):
         toprow.addWidget(gsep, 0, Qt.AlignVCenter); toprow.addSpacing(4)
         toprow.addWidget(self.gear, 0, Qt.AlignVCenter)
         lay.addLayout(toprow)
+        # Ensure the whole tab strip always fits: force the pivot's minimum
+        # width to the width it needs to show every tab, and widen the column
+        # minimum to fit pivot + separator + gear + margins. Prevents the tabs
+        # from overlapping the settings gear when the window is made narrow.
+        self._fit_tabstrip()
         sep = QFrame(); sep.setObjectName("hsep"); sep.setFixedHeight(1)
         lay.addWidget(sep)
         lay.addWidget(self.stack, 1)
+
+    def _fit_tabstrip(self):
+        """Size the column so the pivot tab strip + gear always fit."""
+        try:
+            self.pivot.adjustSize()
+            pw = self.pivot.sizeHint().width()
+            if pw <= 0:
+                pw = self.pivot.minimumSizeHint().width()
+            self.pivot.setMinimumWidth(pw)
+            # pivot + spacing + separator + gear + column L/R margins + padding
+            needed = pw + 8 + 1 + 4 + 32 + (24 + 18) + 24
+            self.setMinimumWidth(max(584, needed))
+        except Exception:
+            pass
 
     def select_tab(self, key):
         for k, _, page in self._pages:
@@ -1945,7 +2830,9 @@ class SettingsColumn(QWidget):
                 try: it.setText(tr(tkey))
                 except Exception: pass
         self.gear.setToolTip(tr("set.title"))
-        for page in (self.wheel_tab, self.ffb_tab, self.input_tab, self.info_tab, self.settings_tab):
+        # tab labels changed width -> re-fit the strip so nothing overlaps
+        self._fit_tabstrip()
+        for page in (self.wheel_tab, self.lut_tab, self.ffb_tab, self.input_tab, self.info_tab, self.settings_tab):
             if hasattr(page, "retranslate"):
                 try: page.retranslate()
                 except Exception: pass
@@ -2077,6 +2964,9 @@ class ControlHub(FramelessWindow):
 
         self._apply_palette()
         self.retranslate_all()
+        # sync LUT tab + publish active LUT for the currently selected preset
+        try: self._on_preset(global_settings.get("selected_profile", "Global"), auto_apply=False)
+        except Exception: pass
         self.timer = QTimer(self); self.timer.timeout.connect(self._tick); self.timer.start(16)
         QTimer.singleShot(0, self._apply_min_size)
 
@@ -2101,9 +2991,17 @@ class ControlHub(FramelessWindow):
         # live telemetry so the on-screen angle matches the physical wheel.
         return getattr(self, "_applied_angle", self.rotation_value())
 
-    def _on_preset(self, name):
+    def _on_preset(self, name, auto_apply=True):
         try: self.wheelset.load_profile(name)
         except Exception: pass
+        try: self.settings.lut_tab.load_profile(name)
+        except Exception: pass
+        # Selecting a preset applies it immediately, exactly as if APPLY was
+        # pressed (same wheel writes + same notification). Skipped for the
+        # one-time startup sync so launching doesn't fire a warning.
+        if auto_apply:
+            try: self.apply_settings()
+            except Exception: pass
 
     # ---- palette / theme ----
     def _apply_palette(self):
@@ -2114,7 +3012,7 @@ class ControlHub(FramelessWindow):
         self.info_restyle()
 
     def info_restyle(self):
-        for attr in ("info_tab", "settings_tab"):
+        for attr in ("info_tab", "settings_tab", "lut_tab", "wheel_tab"):
             try: getattr(self.settings, attr).restyle()
             except Exception: pass
         try: self.presets.restyle()
@@ -2247,7 +3145,7 @@ class ControlHub(FramelessWindow):
     def apply_settings(self, silent=False):
         if dev is None:
             if not silent:
-                InfoBar.warning(tr("conn.not_connected"), tr("input.led_nc"), duration=2500,
+                _defer_infobar("warning", tr("conn.not_connected"), tr("input.led_nc"), duration=2500,
                                 position=InfoBarPosition.TOP, parent=self)
             return
         w = self.wheelset
@@ -2265,7 +3163,7 @@ class ControlHub(FramelessWindow):
                      "di_center": di_center, "di_persist": persist})
         save_settings()
         if not silent:
-            InfoBar.success(tr("apply.ok_title"), tr("apply.ok_body"), duration=2000,
+            _defer_infobar("success", tr("apply.ok_title"), tr("apply.ok_body"), duration=2000,
                             position=InfoBarPosition.TOP, parent=self)
 
     def _restore_geometry(self):
@@ -2316,8 +3214,45 @@ def _qt_msg_filter(mode, ctx, msg):
     sys.stderr.write(msg + "\n")
 
 
+_INSTANCE_MUTEX = None
+
+
+def _acquire_single_instance():
+    """Return True if this is the only running instance.
+
+    Uses a named Windows mutex to detect a second launch. If one is already
+    running, tries to surface its window (restoring it from the tray) and
+    returns False so this process exits instead of fighting over the wheel.
+    """
+    if sys.platform != "win32":
+        return True
+    try:
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+        ERROR_ALREADY_EXISTS = 183
+        global _INSTANCE_MUTEX
+        # session-local named mutex; kept alive for the whole process
+        _INSTANCE_MUTEX = kernel32.CreateMutexW(None, False,
+                                                "LegacyWheelHub_SingleInstance")
+        if kernel32.GetLastError() == ERROR_ALREADY_EXISTS:
+            try:
+                user32 = ctypes.windll.user32
+                hwnd = user32.FindWindowW(None, "Legacy Wheel Hub")
+                if hwnd:
+                    user32.ShowWindow(hwnd, 9)          # SW_RESTORE
+                    user32.SetForegroundWindow(hwnd)
+            except Exception:
+                pass
+            return False
+        return True
+    except Exception:
+        return True     # never block startup if the check itself fails
+
+
 def main():
     global main_window, CURRENT_LANG, running
+    if not _acquire_single_instance():
+        return
     qInstallMessageHandler(_qt_msg_filter)
     saved = global_settings.get("language")
     if saved in LANG:
