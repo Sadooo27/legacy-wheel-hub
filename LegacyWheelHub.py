@@ -222,8 +222,10 @@ def exe_bitness(path):
         return None
     if machine == 0x014C:
         return "x86"
-    if machine in (0x8664, 0xAA64):
+    if machine == 0x8664:
         return "x64"
+    if machine == 0xAA64:
+        return "arm64"     # an x64 proxy DLL will NOT load in an ARM64 process
     return None
 
 
@@ -321,6 +323,24 @@ def install_proxy_for(exe_path, overwrite_foreign=False):
     return (True, exe_dir)
 
 
+def install_proxy_ui(exe, parent):
+    """install_proxy_for() + user feedback. Shared by the preset editor and the
+    LUT tab so the DLL is handled the same way from both."""
+    ok, info = install_proxy_for(exe)
+    if ok == "foreign":
+        if _confirm_dialog(tr("proxy.foreign_title"), tr("proxy.foreign_body"), parent):
+            ok, info = install_proxy_for(exe, overwrite_foreign=True)
+        else:
+            ok = False
+    if ok is True:
+        _defer_infobar("success", tr("proxy.installed"), tr("proxy.installed_body"),
+                       duration=2500, position=InfoBarPosition.TOP, parent=parent)
+    elif ok is False and info in ("proxy.err_noexe", "proxy.err_arch",
+                                  "proxy.err_asset", "proxy.err_write"):
+        _defer_infobar("warning", tr("proxy.installed"), tr(info), duration=3500,
+                       position=InfoBarPosition.TOP, parent=parent)
+
+
 def uninstall_proxy_for(exe_path, force=False):
     """Remove the dinput8.dll we installed next to the game exe (marker-guarded)."""
     real = resolve_game_exe(exe_path)
@@ -331,9 +351,27 @@ def uninstall_proxy_for(exe_path, force=False):
     marker = os.path.join(exe_dir, PROXY_MARKER)
     if os.path.isfile(dst) and not os.path.isfile(marker) and not force:
         return False           # not ours -> leave it
+    stale = dst + ".old"
     try:
+        if os.path.isfile(stale):      # leftover from a previous locked removal
+            try: os.remove(stale)
+            except Exception: pass
         if os.path.isfile(dst):
-            os.remove(dst)
+            try:
+                os.remove(dst)
+            except PermissionError:
+                # The game is running and has the DLL loaded, so Windows won't
+                # let us delete it - but it DOES allow a rename. Renaming is
+                # enough: the game will never load it again, and the leftover
+                # is cleaned up on the next install/uninstall.
+                try:
+                    os.replace(dst, stale)
+                except Exception:
+                    return False
+                if os.path.isfile(marker):
+                    try: os.remove(marker)
+                    except Exception: pass
+                return "locked"
         if os.path.isfile(marker):
             os.remove(marker)
     except Exception:
@@ -364,7 +402,7 @@ WHEEL_PNG = _find_wheel()
 SETTINGS_FILE = os.path.join(_data_dir(), "settings.json")
 STEER_CENTER = 8192
 ACCENT_FALLBACK = "#ff6a1a"
-HUB_VERSION = "v1.1.1"
+HUB_VERSION = "v1.1.2"
 AUTHOR = "Sadooo"
 
 
@@ -409,6 +447,14 @@ DEVICE_PROFILES = {
 }
 PID_COMPAT = 0xC294
 
+# Derived from DEVICE_PROFILES so the two can never drift apart.
+ALL_REGISTRY_PIDS = sorted({p for v in DEVICE_PROFILES.values() for p in v["registry_pids"]})
+NATIVE_PIDS = sorted({v["pid_native"] for v in DEVICE_PROFILES.values()})
+
+# Autocenter ramp slope used when a profile doesn't specify one. 7 is what
+# v1.1.1 hard-coded everywhere, so this keeps old profiles feeling identical.
+DEFAULT_RAMP = 7
+
 LANG = {
     "en": {
         "nav.home": "Home", "nav.wheel": "Wheel Settings", "nav.ffb": "FFB Test",
@@ -431,9 +477,10 @@ LANG = {
         "wheel.damper": "Damper Effect", "wheel.damper_h": "Driver-based damping (recommended: 0%).",
         "wheel.center_cb": "Enable Centering Spring in FFB games",
         "wheel.center": "Centering Spring", "wheel.center_h": "Driver-based autocenter strength.",
+        "wheel.ramp": "Centering Ramp", "wheel.ramp_h": "Shapes the centering spring only \u2014 no effect while it is 0. Default 7.",
         "wheel.steering": "Steering", "wheel.rotation": "Rotation Range",
         "wheel.rotation_h": "Maximum steering rotation angle.",
-        "ffb.title": "Force Feedback Test",
+        "ffb.title": "FORCE FEEDBACK TEST",
         "ffb.subtitle": "Test the FFB motor directly. Best done while no game is using the wheel.",
         "ffb.strength": "Test Strength", "ffb.strength_h": "Strength used by Push, Spring and Sweep tests.",
         "ffb.push_l": "Push Left", "ffb.push_r": "Push Right",
@@ -465,7 +512,7 @@ LANG = {
         "about.devmodel": "Device Model", "about.interface": "Interface", "about.power": "Power Status",
         "about.tracking": "Tracking System", "about.polling": "Max Polling Rate",
         "about.opmode": "Operating Mode", "about.api": "API Hook", "about.hub": "Hub Version",
-        "about.author": "Author", "about.sec_about": "ABOUT", "about.repo": "GitHub repository", "about.license": "License: GPL-3.0", "about.disclaimer": "Not affiliated with, endorsed by, or sponsored by Logitech. \u201cLogitech\u201d, \u201cDriving Force\u201d and \u201cG27\u201d are trademarks of Logitech, used here only to indicate hardware compatibility.", "about.power_active": "{0} / Active",
+        "about.author": "Author", "about.sec_about": "ABOUT", "about.repo": "GitHub repository", "about.license": "License: GPL-3.0", "about.disclaimer": "Not affiliated with Logitech. All trademarks belong to their respective owners.", "about.power_active": "{0} / Active",
         "about.power_standby": "Standby / Disconnected",
         "about.opmode_active": "Native Advanced Mode (Unlocked)",
         "about.opmode_idle": "Idle / Awaiting Device",
@@ -497,6 +544,8 @@ LANG = {
         "prof.exe_pick": "Choose game\u2026", "prof.name_lbl": "Profile name",
         "proxy.installed": "Proxy installed", "proxy.removed": "Proxy removed",
         "proxy.installed_body": "dinput8.dll placed next to the game.",
+        "proxy.locked": "Proxy disabled", "proxy.locked_body": "Will be cleaned up when the game closes.",
+        "proxy.removed": "Proxy removed", "proxy.removed_body": "dinput8.dll removed from the game folder.",
         "proxy.err_noexe": "Game exe not found.", "proxy.err_arch": "Unsupported architecture.",
         "proxy.err_asset": "Bundled proxy DLL missing (assets/proxy).",
         "proxy.err_write": "Could not write DLL (is the game running? folder writable?).",
@@ -533,9 +582,10 @@ LANG = {
         "wheel.damper": "Damper Efekti", "wheel.damper_h": "S\u00fcr\u00fcc\u00fc tabanl\u0131 s\u00f6n\u00fcmleme (\u00f6nerilen: %0).",
         "wheel.center_cb": "FFB oyunlar\u0131nda ortalama yay\u0131n\u0131 etkinle\u015ftir",
         "wheel.center": "Ortalama Yay\u0131", "wheel.center_h": "S\u00fcr\u00fcc\u00fc tabanl\u0131 otomatik ortalama g\u00fcc\u00fc.",
+        "wheel.ramp": "Ortalama Rampas\u0131", "wheel.ramp_h": "Yaln\u0131zca ortalama yay\u0131n\u0131 \u015fekillendirir \u2014 o 0 iken etkisizdir. Varsay\u0131lan 7.",
         "wheel.steering": "Direksiyon", "wheel.rotation": "D\u00f6n\u00fc\u015f Aral\u0131\u011f\u0131",
         "wheel.rotation_h": "Maksimum direksiyon d\u00f6n\u00fc\u015f a\u00e7\u0131s\u0131.",
-        "ffb.title": "Kuvvet Geri Bildirim Testi",
+        "ffb.title": "KUVVET GER\u0130 B\u0130LD\u0130R\u0130M TEST\u0130",
         "ffb.subtitle": "FFB motorunu do\u011frudan test edin. Hi\u00e7bir oyun direksiyonu kullanm\u0131yorken yap\u0131lmas\u0131 en iyisidir.",
         "ffb.strength": "Test G\u00fcc\u00fc", "ffb.strength_h": "\u0130tme, Yay ve Tarama testlerinde kullan\u0131lan g\u00fc\u00e7.",
         "ffb.push_l": "Sola \u0130t", "ffb.push_r": "Sa\u011fa \u0130t",
@@ -567,7 +617,7 @@ LANG = {
         "about.devmodel": "Cihaz Modeli", "about.interface": "Aray\u00fcz", "about.power": "G\u00fc\u00e7 Durumu",
         "about.tracking": "Takip Sistemi", "about.polling": "Maks. Yoklama H\u0131z\u0131",
         "about.opmode": "\u00c7al\u0131\u015fma Modu", "about.api": "API Ba\u011flant\u0131s\u0131", "about.hub": "Hub S\u00fcr\u00fcm\u00fc",
-        "about.author": "Yazar", "about.sec_about": "HAKKINDA", "about.repo": "GitHub deposu", "about.license": "Lisans: GPL-3.0", "about.disclaimer": "Logitech ile herhangi bir ba\u011flant\u0131s\u0131, onay\u0131 veya sponsorlu\u011fu yoktur. \u201cLogitech\u201d, \u201cDriving Force\u201d ve \u201cG27\u201d Logitech\u2019in ticari markalar\u0131d\u0131r; burada yaln\u0131zca donan\u0131m uyumlulu\u011funu belirtmek i\u00e7in kullan\u0131lm\u0131\u015ft\u0131r.", "about.power_active": "{0} / Aktif",
+        "about.author": "Yazar", "about.sec_about": "HAKKINDA", "about.repo": "GitHub deposu", "about.license": "Lisans: GPL-3.0", "about.disclaimer": "Logitech ile ba\u011flant\u0131s\u0131 yoktur. T\u00fcm ticari markalar sahiplerine aittir.", "about.power_active": "{0} / Aktif",
         "about.power_standby": "Beklemede / Ba\u011fl\u0131 De\u011fil",
         "about.opmode_active": "Yerel Geli\u015fmi\u015f Mod (Kilit A\u00e7\u0131k)",
         "about.opmode_idle": "Bo\u015fta / Cihaz Bekleniyor",
@@ -598,6 +648,8 @@ LANG = {
         "prof.exe_pick": "Oyun se\u00e7\u2026", "prof.name_lbl": "Profil ad\u0131",
         "proxy.installed": "Proxy kuruldu", "proxy.removed": "Proxy kald\u0131r\u0131ld\u0131",
         "proxy.installed_body": "dinput8.dll oyunun yan\u0131na kopyaland\u0131.",
+        "proxy.locked": "Proxy devre d\u0131\u015f\u0131", "proxy.locked_body": "Oyun kapand\u0131\u011f\u0131nda temizlenecek.",
+        "proxy.removed": "Proxy kald\u0131r\u0131ld\u0131", "proxy.removed_body": "dinput8.dll oyun klas\u00f6r\u00fcnden kald\u0131r\u0131ld\u0131.",
         "proxy.err_noexe": "Oyun exe'si bulunamad\u0131.", "proxy.err_arch": "Desteklenmeyen mimari.",
         "proxy.err_asset": "G\u00f6m\u00fcl\u00fc proxy DLL'i yok (assets/proxy).",
         "proxy.err_write": "DLL yaz\u0131lamad\u0131 (oyun a\u00e7\u0131k m\u0131? klas\u00f6r yaz\u0131labilir mi?).",
@@ -635,9 +687,10 @@ LANG = {
         "wheel.damper": "D\u00e4mpfer-Effekt", "wheel.damper_h": "Treiberbasierte D\u00e4mpfung (empfohlen: 0%).",
         "wheel.center_cb": "Zentrierfeder in FFB-Spielen aktivieren",
         "wheel.center": "Zentrierfeder", "wheel.center_h": "Treiberbasierte Auto-Zentrierst\u00e4rke.",
+        "wheel.ramp": "Zentrier-Rampe", "wheel.ramp_h": "Formt nur die Zentrierfeder \u2014 ohne Wirkung, wenn sie 0 ist. Standard 7.",
         "wheel.steering": "Lenkung", "wheel.rotation": "Drehbereich",
         "wheel.rotation_h": "Maximaler Lenkdrehwinkel.",
-        "ffb.title": "Force-Feedback-Test",
+        "ffb.title": "FORCE-FEEDBACK-TEST",
         "ffb.subtitle": "Testen Sie den FFB-Motor direkt. Am besten, wenn kein Spiel das Lenkrad nutzt.",
         "ffb.strength": "Teststärke", "ffb.strength_h": "St\u00e4rke f\u00fcr Druck-, Feder- und Sweep-Tests.",
         "ffb.push_l": "Nach links", "ffb.push_r": "Nach rechts",
@@ -669,7 +722,7 @@ LANG = {
         "about.devmodel": "Ger\u00e4temodell", "about.interface": "Schnittstelle", "about.power": "Energiestatus",
         "about.tracking": "Tracking-System", "about.polling": "Max. Abtastrate",
         "about.opmode": "Betriebsmodus", "about.api": "API-Hook", "about.hub": "Hub-Version",
-        "about.author": "Autor", "about.sec_about": "\u00dcBER", "about.repo": "GitHub-Repository", "about.license": "Lizenz: GPL-3.0", "about.disclaimer": "Nicht mit Logitech verbunden, von Logitech unterst\u00fctzt oder gesponsert. \u201eLogitech\u201c, \u201eDriving Force\u201c und \u201eG27\u201c sind Marken von Logitech und werden hier nur zur Angabe der Hardware-Kompatibilit\u00e4t verwendet.", "about.power_active": "{0} / Aktiv",
+        "about.author": "Autor", "about.sec_about": "\u00dcBER", "about.repo": "GitHub-Repository", "about.license": "Lizenz: GPL-3.0", "about.disclaimer": "Nicht mit Logitech verbunden. Alle Marken geh\u00f6ren ihren jeweiligen Eigent\u00fcmern.", "about.power_active": "{0} / Aktiv",
         "about.power_standby": "Standby / Getrennt",
         "about.opmode_active": "Nativer Erweiterter Modus (Entsperrt)",
         "about.opmode_idle": "Leerlauf / Warte auf Ger\u00e4t",
@@ -701,6 +754,8 @@ LANG = {
         "prof.exe_pick": "Spiel w\u00e4hlen\u2026", "prof.name_lbl": "Profilname",
         "proxy.installed": "Proxy installiert", "proxy.removed": "Proxy entfernt",
         "proxy.installed_body": "dinput8.dll neben dem Spiel platziert.",
+        "proxy.locked": "Proxy deaktiviert", "proxy.locked_body": "Wird beim Schlie\u00dfen des Spiels entfernt.",
+        "proxy.removed": "Proxy entfernt", "proxy.removed_body": "dinput8.dll aus dem Spielordner entfernt.",
         "proxy.err_noexe": "Spiel-Exe nicht gefunden.", "proxy.err_arch": "Nicht unterst\u00fctzte Architektur.",
         "proxy.err_asset": "Geb\u00fcndelte Proxy-DLL fehlt (assets/proxy).",
         "proxy.err_write": "DLL konnte nicht geschrieben werden (l\u00e4uft das Spiel? Ordner beschreibbar?).",
@@ -736,19 +791,40 @@ test_override = None
 main_window = None
 
 
+PROFILE_DEFAULTS = {"angle": 900, "di_gain": 101, "di_spring": 0, "di_damper": 0,
+                    "di_center": 0, "di_ramp": DEFAULT_RAMP, "di_persist": False,
+                    "exe_path": "", "logo_exe": "", "lut_file": "", "lut_enabled": False}
+
+
+def _active_ramp():
+    """Ramp of the currently selected profile (used by test/center actions so
+    they match what APPLY sends)."""
+    try:
+        return int(global_settings["profiles"][global_settings["selected_profile"]]
+                   .get("di_ramp", DEFAULT_RAMP))
+    except Exception:
+        return DEFAULT_RAMP
+
+
 def load_settings():
     base = {"theme": "dark", "language": "en", "last_device": None, "auto_load": False,
             "minimize_to_tray": False, "win_w": 1366, "win_h": 720, "last_tab": "wheel", "ui_scale": 100,
-            "profiles": {"Global": {"angle": 900, "di_gain": 101, "di_spring": 0,
-                                    "di_damper": 0, "di_center": 0, "di_persist": False,
-                                    "exe_path": "", "logo_exe": "", "lut_file": "",
-                                    "lut_enabled": False}},
+            "profiles": {"Global": dict(PROFILE_DEFAULTS)},
             "selected_profile": "Global"}
     try:
         with open(SETTINGS_FILE) as f:
             v = json.load(f)
         for k in base:
             v.setdefault(k, base[k])
+        # Backfill keys added in later versions (e.g. di_ramp) so a settings
+        # file written by an older build keeps its old behaviour instead of
+        # hitting a missing key.
+        try:
+            for p in v["profiles"].values():
+                for k, dv in PROFILE_DEFAULTS.items():
+                    p.setdefault(k, dv)
+        except Exception:
+            pass
         return v
     except Exception:
         return base
@@ -798,16 +874,55 @@ def _detect_profile():
     return None, None
 
 
+# Extended command 09 mode bytes (classic Logitech protocol).
+# The byte selects which wheel identity the device re-enumerates as:
+#   0x00 DF-EX | 0x01 DFP | 0x02 G25 | 0x03 DFGT | 0x04 G27 | 0x05 G29
+# Sending the wrong one makes a G27 come back as a DFGT (wrong PID, no LEDs,
+# no clutch), so the byte must match the wheel we actually want.
+NATIVE_MODE_BYTE = {"DFEX": 0x00, "DFP": 0x01, "G25": 0x02, "DFGT": 0x03, "G27": 0x04}
+
+
+def _switch_mode(mode_byte):
+    h = hid.device(); h.open(VID, PID_COMPAT)
+    h.write([0x00, 0xF8, 0x0A, 0, 0, 0, 0, 0]); time.sleep(0.1)      # revert on USB reset
+    h.write([0x00, 0xF8, 0x09, mode_byte, 0x01, 0, 0, 0]); time.sleep(0.1)  # switch + detach
+    h.close()
+
+
+def _wait_for_pid(pid, timeout=4.0):
+    """Poll until the wheel re-enumerates with `pid` (instead of a blind sleep)."""
+    t0 = time.time()
+    while time.time() - t0 < timeout:
+        try:
+            if pid in [d["product_id"] for d in hid.enumerate(VID)]:
+                return True
+        except Exception:
+            pass
+        time.sleep(0.25)
+    return False
+
+
 def ensure_native_mode():
     try:
-        present = [d["product_id"] for d in hid.enumerate(VID)]
+        devs = hid.enumerate(VID)
+        present = [d["product_id"] for d in devs]
         if DEVICE_PROFILES["DFGT"]["pid_native"] in present: return
         if DEVICE_PROFILES["G27"]["pid_native"] in present: return
         if PID_COMPAT not in present: return
-        h = hid.device(); h.open(VID, PID_COMPAT)
-        h.write([0x00, 0xF8, 0x0A, 0, 0, 0, 0, 0]); time.sleep(0.1)
-        h.write([0x00, 0xF8, 0x09, 0x03, 0x01, 0, 0, 0]); time.sleep(0.1)
-        h.close(); time.sleep(4)
+        # In compat mode we don't know which wheel this is; use the reported
+        # product name as a hint, then try the other one as a fallback.
+        name = ""
+        for d in devs:
+            if d["product_id"] == PID_COMPAT:
+                name = (d.get("product_string") or "").lower(); break
+        order = ["DFGT", "G27"] if "gt" in name else ["G27", "DFGT"]
+        for key in order:
+            try:
+                _switch_mode(NATIVE_MODE_BYTE[key])
+            except Exception:
+                continue
+            if _wait_for_pid(DEVICE_PROFILES[key]["pid_native"]):
+                return
     except Exception:
         pass
 
@@ -937,14 +1052,37 @@ def decode_buttons(raw):
 
 
 def rotation_cmd(deg): return [0xF8, 0x81, deg & 0xFF, (deg >> 8) & 0xFF, 0, 0, 0]
-def autocenter_cmd(pct, ramp):
-    r = max(0, min(15, int(ramp)))
-    return [0xFE, 0x0D, r, r, int(pct * 255 / 100), 0, 0]
+def autocenter_cmd(pct, ramp=DEFAULT_RAMP, ramp2=None):
+    """Autocenter spring. Bytes 2/3 are the clockwise / counter-clockwise ramp
+    slope (0-15); pass ramp2 for an asymmetric feel. Byte 4 is strength."""
+    r1 = max(0, min(15, int(ramp)))
+    r2 = r1 if ramp2 is None else max(0, min(15, int(ramp2)))
+    p = max(0, min(100, int(pct)))
+    return [0xFE, 0x0D, r1, r2, int(p * 255 / 100), 0, 0]
+# Classic Logitech FFB opcode = (slot mask << 4) | command.
+# Slot 0 carries the game's constant force; slots 1-3 are free (spring/damper/
+# periodic). Stopping ALL slots (0xF3) would also kill the game's own forces,
+# so per-slot stop exists as well.
+CMD_DOWNLOAD_PLAY = 0x01
+CMD_STOP = 0x03
+SLOT0_MASK = 0x10
+ALL_SLOTS_MASK = 0xF0
+
+
+def _slot_mask(slot):
+    return (1 << max(0, min(3, int(slot)))) << 4
+
+
+def stop_slot_cmd(slot=0):
+    """Stop one slot only, leaving the other three untouched."""
+    return [_slot_mask(slot) | CMD_STOP, 0, 0, 0, 0, 0, 0]
+
+
 def constant_force_cmd(direction, pct):
     pct = max(0, min(100, int(pct))); span = int(pct * 127 / 100)
     val = 0x80 + span if direction == "left" else (0x80 - span if direction == "right" else 0x80)
-    return [0x11, 0x00, max(0, min(255, val)), 0, 0, 0, 0]
-def stop_forces_cmd(): return [0xF3, 0, 0, 0, 0, 0, 0]
+    return [SLOT0_MASK | CMD_DOWNLOAD_PLAY, 0x00, max(0, min(255, val)), 0, 0, 0, 0]
+def stop_forces_cmd(): return [ALL_SLOTS_MASK | CMD_STOP, 0, 0, 0, 0, 0, 0]
 
 
 def ffb_write(cmd):
@@ -979,7 +1117,7 @@ def update_registry_ffb(gain, spring, damper, center, persist, angle):
 def restore_ffb_defaults():
     names = ["OverallStrength", "SpringStrength", "DamperStrength",
              "CenteringSpring", "PersistentCenteringSpring", "MapDefault", "Turn"]
-    all_pids = ["VID_046D&PID_C29A", "VID_046D&PID_C29B", "VID_046D&PID_C294"]
+    all_pids = ALL_REGISTRY_PIDS
     if winreg is not None:
         for pid in all_pids:
             path = rf"Software\Logitech\Gaming Software\DriverSettings\{pid}"
@@ -992,7 +1130,7 @@ def restore_ffb_defaults():
                 except Exception: pass
                 winreg.CloseKey(key)
             except Exception: pass
-    ffb_write(autocenter_cmd(0, 7)); ffb_write(stop_forces_cmd())
+    ffb_write(autocenter_cmd(0)); ffb_write(stop_forces_cmd())
 
 
 def _led_set(s): ffb_write([0xF8, 0x12, s & 0x1F, 0, 0, 0, 0x01])
@@ -1785,23 +1923,19 @@ class PresetsPanel(QWidget):
             self.on_select(n)
 
     def _install_for_profile(self, exe):
-        """Copy the correct dinput8.dll next to `exe`, asking before overwriting
-        a foreign DLL. Shared by add and edit."""
+        """Install the DLL only when this profile actually uses a LUT.
+
+        Picking a game is not a reason to drop a DLL into its folder: the user
+        may just want per-game wheel settings or an icon. The helper is only
+        needed for FFB post-processing, so it follows the LUT switch instead.
+        """
         if not exe:
             return
-        ok, info = install_proxy_for(exe)
-        if ok == "foreign":
-            if _confirm_dialog(tr("proxy.foreign_title"), tr("proxy.foreign_body"), self.window()):
-                ok, info = install_proxy_for(exe, overwrite_foreign=True)
-            else:
-                ok = False
-        if ok is True:
-            _defer_infobar("success", tr("proxy.installed"), tr("proxy.installed_body"),
-                            duration=2500, position=InfoBarPosition.TOP, parent=self.window())
-        elif ok is False and info in ("proxy.err_noexe", "proxy.err_arch",
-                                      "proxy.err_asset", "proxy.err_write"):
-            _defer_infobar("warning", tr("proxy.installed"), tr(info), duration=3500,
-                            position=InfoBarPosition.TOP, parent=self.window())
+        prof = global_settings["profiles"].get(self._selected(), {})
+        if not prof.get("lut_enabled"):
+            return
+        install_proxy_ui(exe, self.window())
+
 
     def _duplicate(self):
         cur = self._selected()
@@ -1866,7 +2000,8 @@ class PresetsPanel(QWidget):
             try:
                 exe = (gone or {}).get("exe_path", "")
                 if exe:
-                    still = any(os.path.normcase(pp.get("exe_path", "")) == os.path.normcase(exe)
+                    still = any(pp.get("lut_enabled")
+                                and os.path.normcase(pp.get("exe_path", "")) == os.path.normcase(exe)
                                 for pp in global_settings["profiles"].values())
                     if not still:
                         uninstall_proxy_for(exe)
@@ -1964,7 +2099,7 @@ class TelemetryPanel(QWidget):
             return
         ffb_write(stop_forces_cmd())
         ffb_write(rotation_cmd(main_window.applied_rotation()))
-        ffb_write(autocenter_cmd(100, 7))
+        ffb_write(autocenter_cmd(100))
         self._center_state = {"active": True, "near": 0, "deadline": time.time() + 4.0}
         self._center_timer.start(50)
 
@@ -1985,7 +2120,7 @@ class TelemetryPanel(QWidget):
         self._center_state["active"] = False; self._center_timer.stop()
         w = main_window.wheelset
         f = w.s_center.value() if w.cb_center.isChecked() else 0
-        ffb_write(autocenter_cmd(f, 7))
+        ffb_write(autocenter_cmd(f))
 
     def refresh(self):
         n = state["steer_norm"]
@@ -2013,8 +2148,10 @@ def _slider_block(lay, name, lo, hi, val, suffix, hint):
     s = Slider(Qt.Horizontal); s.setRange(lo, hi); s.setValue(val)
     s.valueChanged.connect(lambda v: vl.setText(f"{v}{suffix}"))
     hl = CaptionLabel(hint)
-    lay.addLayout(top); lay.addWidget(s); lay.addWidget(hl); lay.addSpacing(8)
-    s._nm = nm; s._hint = hl
+    hl.setWordWrap(True)          # long hints must wrap, not widen the column
+    hl.setMinimumWidth(1)         # never impose a minimum on the layout
+    lay.addLayout(top); lay.addWidget(s); lay.addWidget(hl); lay.addSpacing(10)
+    s._nm = nm; s._hint = hl; s._val = vl
     return s
 
 
@@ -2028,7 +2165,7 @@ class WheelSettingsTab(QWidget):
         scroll.viewport().setStyleSheet("background:transparent;")
         outer.addWidget(scroll)
         host = QWidget(); host.setStyleSheet("background:transparent;")
-        lay = QVBoxLayout(host); lay.setContentsMargins(2, 4, 12, 8); lay.setSpacing(4)
+        lay = QVBoxLayout(host); lay.setContentsMargins(2, 4, 12, 4); lay.setSpacing(2)
         scroll.setWidget(host)
 
         self.h_ffb = section_header(tr("wheel.sec_ffb")); lay.addWidget(self.h_ffb); lay.addSpacing(6)
@@ -2043,13 +2180,19 @@ class WheelSettingsTab(QWidget):
         lay.addWidget(self.cb_center); lay.addSpacing(4)
         self.s_center = _slider_block(lay, tr("wheel.center"), 0, 100, prof.get("di_center", 0), "%",
                                       tr("wheel.center_h"))
+        # Autocenter ramp (0-15): the wheel's own spring slope. Same force with a
+        # different ramp gives a very different center character.
+        self.s_ramp = _slider_block(lay, tr("wheel.ramp"), 0, 15, prof.get("di_ramp", DEFAULT_RAMP), "",
+                                    tr("wheel.ramp_h"))
         lay.addSpacing(6)
         self.h_steer = section_header(tr("wheel.sec_steer")); lay.addWidget(self.h_steer); lay.addSpacing(6)
         self.s_rot = _slider_block(lay, tr("wheel.rotation"), 90, 900, prof.get("angle", 900), "\u00b0",
                                    tr("wheel.rotation_h"))
-        prow = QHBoxLayout(); prow.setSpacing(8)
-        for d in (360, 540, 720, 900):
+        prow = QHBoxLayout(); prow.setSpacing(6)
+        for d in (270, 360, 540, 720, 900):
             b = PushButton(f"{d}\u00b0")
+            b.setMinimumWidth(1)                 # 5 buttons must fit when narrow
+            b.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
             b.clicked.connect(lambda _, x=d: self.s_rot.setValue(x))
             prow.addWidget(b)
         lay.addLayout(prow)
@@ -2062,6 +2205,7 @@ class WheelSettingsTab(QWidget):
                           (self.s_spring, "wheel.spring", "wheel.spring_h"),
                           (self.s_damper, "wheel.damper", "wheel.damper_h"),
                           (self.s_center, "wheel.center", "wheel.center_h"),
+                          (self.s_ramp, "wheel.ramp", "wheel.ramp_h"),
                           (self.s_rot, "wheel.rotation", "wheel.rotation_h")):
             s._nm.setText(tr(nk)); s._hint.setText(tr(hk))
 
@@ -2076,6 +2220,7 @@ class WheelSettingsTab(QWidget):
         self.s_damper.setValue(prof.get("di_damper", 0))
         self.cb_center.setChecked(prof.get("di_persist", False))
         self.s_center.setValue(prof.get("di_center", 0))
+        self.s_ramp.setValue(prof.get("di_ramp", DEFAULT_RAMP))
         self.s_rot.setValue(prof.get("angle", 900))
 
 
@@ -2162,7 +2307,7 @@ class LutTab(QWidget):
         self._loading = False
         lay = QVBoxLayout(self); lay.setContentsMargins(2, 4, 12, 8); lay.setSpacing(4)
 
-        self.h_sec = section_header(tr("lut.sec")); lay.addWidget(self.h_sec); lay.addSpacing(4)
+        self.h_sec = section_header(tr("lut.sec")); lay.addWidget(self.h_sec); lay.addSpacing(6)
         self.cb_enable = CheckBox(tr("lut.enable"))
         self.cb_enable.stateChanged.connect(self._on_enable)
         lay.addWidget(self.cb_enable)
@@ -2274,6 +2419,33 @@ class LutTab(QWidget):
             return
         self._cur_prof()["lut_enabled"] = self.cb_enable.isChecked()
         save_settings(); self._publish()
+        self._sync_proxy()
+
+    def _sync_proxy(self):
+        """The helper DLL exists only to apply the LUT, so it follows this
+        switch: installed when post-processing is on, removed when it's off."""
+        prof = self._cur_prof()
+        exe = prof.get("exe_path", "")
+        if not exe:
+            return
+        if prof.get("lut_enabled"):
+            install_proxy_ui(exe, self.window())
+            return
+        # Don't pull the DLL out from under another profile that still needs it.
+        still_needed = any(
+            pp is not prof and pp.get("lut_enabled")
+            and os.path.normcase(pp.get("exe_path", "")) == os.path.normcase(exe)
+            for pp in global_settings["profiles"].values())
+        if not still_needed:
+            res = uninstall_proxy_for(exe)
+            if res == "locked":
+                # Game is running: the DLL was renamed, not deleted. Say so
+                # instead of claiming a clean removal.
+                _defer_infobar("warning", tr("proxy.locked"), tr("proxy.locked_body"),
+                               duration=3000, position=InfoBarPosition.TOP, parent=self.window())
+            elif res:
+                _defer_infobar("success", tr("proxy.removed"), tr("proxy.removed_body"),
+                               duration=2500, position=InfoBarPosition.TOP, parent=self.window())
 
     def _on_combo(self, *_):
         if self._loading:
@@ -2314,14 +2486,30 @@ class LutTab(QWidget):
             os.remove(os.path.join(_lut_dir(), fn))
         except Exception:
             pass
-        # any profile that referenced this LUT falls back to disabled/none
+        # Deleting a LUT file just clears the reference - it must NOT be treated
+        # as the user turning post-processing off, or a profile that still has
+        # post-processing on (e.g. pointing at a different LUT, or about to get a
+        # new one) would lose its DLL. Only the profiles that actually used this
+        # file lose their file; the enabled flag is left untouched, and the
+        # checkbox is synced under the loading guard so it doesn't fire
+        # _on_enable / _sync_proxy.
+        cur = self._cur_prof()
+        self._refresh_files()
+        # After deleting, fall back to the first remaining LUT, or None if the
+        # folder is now empty.
+        new_file = self._files[0] if getattr(self, "_files", []) else ""
+        self.select_file(new_file)
+        # Repoint every profile that used the deleted file to the new selection
+        # (post-processing stays on; only the file reference changes).
         for pp in global_settings["profiles"].values():
             if pp.get("lut_file") == fn:
-                pp["lut_file"] = ""
-                pp["lut_enabled"] = False
+                pp["lut_file"] = new_file
+        cur["lut_file"] = new_file
         save_settings()
-        self._refresh_files(keep="")
-        self.cb_enable.setChecked(False)
+        self._loading = True
+        self.cb_enable.setChecked(bool(cur.get("lut_enabled")))
+        self._loading = False
+        self._draw_current()
         self._publish()
         _defer_infobar("success", tr("lut.deleted"), fn, duration=2000,
                         position=InfoBarPosition.TOP, parent=self.window())
@@ -2374,7 +2562,7 @@ class FFBTestTab(QWidget):
     def __init__(self):
         super().__init__()
         lay = QVBoxLayout(self); lay.setContentsMargins(2, 4, 12, 8); lay.setSpacing(4)
-        self.h_test = section_header(tr("ffb.title")); lay.addWidget(self.h_test); lay.addSpacing(4)
+        self.h_test = section_header(tr("ffb.title")); lay.addWidget(self.h_test); lay.addSpacing(6)
         self.sub = CaptionLabel(tr("ffb.subtitle"))
         lay.addWidget(self.sub); lay.addSpacing(6)
         self.s_strength = _slider_block(lay, tr("ffb.strength"), 0, 100, 60, "%", tr("ffb.strength_h"))
@@ -2388,7 +2576,8 @@ class FFBTestTab(QWidget):
         g.addWidget(self.bL, 0, 0); g.addWidget(self.bR, 0, 1)
         g.addWidget(self.btn_spring, 1, 0); g.addWidget(self.btn_sweep, 1, 1)
         lay.addLayout(g); lay.addSpacing(8)
-        self.h_adv = section_header(tr("ffb.advanced")); lay.addWidget(self.h_adv); lay.addSpacing(4)
+        lay.addSpacing(6)
+        self.h_adv = section_header(tr("ffb.advanced")); lay.addWidget(self.h_adv); lay.addSpacing(6)
         g2 = QGridLayout(); g2.setSpacing(8)
         specs = [("ffb.pulse_l", lambda: self._pulse("left")), ("ffb.pulse_r", lambda: self._pulse("right")),
                  ("ffb.vibe_light", lambda: self._vibe(40, 0.040)), ("ffb.vibe_med", lambda: self._vibe(70, 0.030)),
@@ -2434,15 +2623,15 @@ class FFBTestTab(QWidget):
     def _stop(self):
         self._spring_on = self._sweep_on = False; self._sweep_t.stop()
         self.btn_spring.setText(tr("ffb.spring")); self.btn_sweep.setText(tr("ffb.sweep"))
-        ffb_write(stop_forces_cmd()); ffb_write(autocenter_cmd(0, 7))
+        ffb_write(stop_forces_cmd()); ffb_write(autocenter_cmd(0))
 
     def _toggle_spring(self):
         if not self._spring_on and not self._ready(): return
         self._spring_on = not self._spring_on
         if self._spring_on:
-            ffb_write(autocenter_cmd(self._str(), 7)); self.btn_spring.setText(tr("ffb.spring_stop"))
+            ffb_write(autocenter_cmd(self._str(), _active_ramp())); self.btn_spring.setText(tr("ffb.spring_stop"))
         else:
-            ffb_write(autocenter_cmd(0, 7)); self.btn_spring.setText(tr("ffb.spring"))
+            ffb_write(autocenter_cmd(0)); self.btn_spring.setText(tr("ffb.spring"))
 
     def _toggle_sweep(self):
         if not self._sweep_on and not self._ready(): return
@@ -2466,7 +2655,7 @@ class FFBTestTab(QWidget):
         def run():
             t0 = time.time(); cur = strength
             while time.time() - t0 < 1.5:
-                ffb_write([0x11, 0x00, max(0, min(255, 0x80 + cur)), 0, 0, 0, 0]); cur = -cur; time.sleep(period)
+                ffb_write([SLOT0_MASK | CMD_DOWNLOAD_PLAY, 0x00, max(0, min(255, 0x80 + cur)), 0, 0, 0, 0]); cur = -cur; time.sleep(period)
             ffb_write(stop_forces_cmd())
         threading.Thread(target=run, daemon=True).start()
 
@@ -2483,7 +2672,7 @@ class InputMonitorTab(QWidget):
         # layout expose its real minimum makes the window refuse to shrink past
         # the point where buttons would clip (instead of showing a scrollbar).
         lay = QVBoxLayout(self); lay.setContentsMargins(2, 4, 12, 8); lay.setSpacing(6)
-        self.hdr = section_header(tr("tab.input")); lay.addWidget(self.hdr); lay.addSpacing(2)
+        self.hdr = section_header(tr("tab.input")); lay.addWidget(self.hdr); lay.addSpacing(6)
         self.mon = InputMonitor()
         lay.addWidget(self.mon, 0, Qt.AlignHCenter)
         lay.addSpacing(12)
@@ -2497,6 +2686,14 @@ class InputMonitorTab(QWidget):
         self.hdr._lbl.setText(tr("tab.input")); self.led.setText(tr("input.led"))
         self.mon.update()
 
+    def _sync_caps(self):
+        """DFGT has no RPM LEDs - hide the test instead of showing a button
+        that can only ever answer "G27 only"."""
+        has_leds = active_profile is DEVICE_PROFILES["G27"]
+        for w in (self.led, self.led_status):
+            try: w.setVisible(has_leds)
+            except Exception: pass
+
     def _led(self):
         if dev is None:
             self.led_status.setText(tr("input.led_nc")); return
@@ -2507,6 +2704,7 @@ class InputMonitorTab(QWidget):
         QTimer.singleShot(2300, lambda: self.led_status.setText(""))
 
     def refresh(self):
+        self._sync_caps()
         self.mon.pressed = decode_buttons(state["raw"]) if state["connected"] else set()
         self.mon.update()
 
@@ -2571,7 +2769,9 @@ class InfoTab(QWidget):
 
     def _sec(self, lay, key):
         hd = section_header(tr(key)); hd._key = key; self._bars.append(hd._bar); self._secs.append(hd)
-        lay.addSpacing(2); lay.addWidget(hd); lay.addSpacing(2)
+        if lay.count():          # no gap above the FIRST header: it must line
+            lay.addSpacing(8)    # up with the other tabs' first header
+        lay.addWidget(hd); lay.addSpacing(4)
 
     def _row(self, lay, key, field):
         row = QHBoxLayout(); row.setContentsMargins(14, 0, 4, 0)
@@ -2620,7 +2820,7 @@ class SettingsTab(QWidget):
         scroll.viewport().setStyleSheet("background:transparent;")
         outer.addWidget(scroll)
         host = QWidget(); host.setStyleSheet("background:transparent;")
-        lay = QVBoxLayout(host); lay.setContentsMargins(2, 6, 12, 8); lay.setSpacing(6)
+        lay = QVBoxLayout(host); lay.setContentsMargins(2, 4, 12, 4); lay.setSpacing(2)
         scroll.setWidget(host)
 
         self.sec_gen = self._sec(lay, "set.general")
@@ -2673,7 +2873,9 @@ class SettingsTab(QWidget):
 
     def _sec(self, lay, key):
         hd = section_header(tr(key)); hd._key = key; self._bars.append(hd._bar)
-        lay.addSpacing(2); lay.addWidget(hd); lay.addSpacing(2)
+        if lay.count():          # no gap above the FIRST header: it must line
+            lay.addSpacing(8)    # up with the other tabs' first header
+        lay.addWidget(hd); lay.addSpacing(4)
         return hd
 
     def _field(self, lay, key, ctrl):
@@ -2706,6 +2908,23 @@ class SettingsTab(QWidget):
     def _on_test(self, *_):
         if self._guard: return
         set_test_override(self.combo_test.currentData())
+        # The override changes active_profile, but the capability-driven parts
+        # of the UI (clutch bar, LED test, device name) are refreshed by the
+        # poller - which never runs while no wheel is connected. Refresh them
+        # by hand so switching the test device actually changes the UI.
+        w = self.window()
+        for path in ("telemetry", "settings.input_tab"):
+            try:
+                o = w
+                for p in path.split("."): o = getattr(o, p)
+                o.refresh()
+            except Exception:
+                pass
+        for owner in (w, getattr(w, "titleBar", None)):
+            try:
+                owner.set_device(active_profile["name"]); break
+            except Exception:
+                pass
 
     def restyle(self):
         for b in self._bars:
@@ -2880,7 +3099,7 @@ class CustomTitleBar(TitleBar):
         winrow.addWidget(self.minBtn); winrow.addWidget(self.maxBtn); winrow.addWidget(self.closeBtn)
         rv.addLayout(winrow)
         rv.addStretch(1)
-        actrow = QHBoxLayout(); actrow.setContentsMargins(0, 0, 18, 14); actrow.setSpacing(14)
+        actrow = QHBoxLayout(); actrow.setContentsMargins(0, 0, 18, 6); actrow.setSpacing(14)
         self.status = StrongBodyLabel("\u25cf  Not Connected")
         self.status.setStyleSheet("color:#ff6b6b;")
         self.apply_btn = PushButton("APPLY"); self.apply_btn.setObjectName("applyBtn")
@@ -3152,22 +3371,33 @@ class ControlHub(FramelessWindow):
         gain, spring, damper = w.s_gain.value(), w.s_spring.value(), w.s_damper.value()
         persist = w.cb_center.isChecked()
         di_center = w.s_center.value()
+        di_ramp = w.s_ramp.value()
         center = di_center if persist else 0
         angle = w.s_rot.value()
         update_registry_ffb(gain, spring, damper, di_center, persist, angle)
         ffb_write(rotation_cmd(angle))
-        ffb_write(autocenter_cmd(center, 7))
+        ffb_write(autocenter_cmd(center, di_ramp))
         self._applied_angle = angle   # telemetry now matches the new range
         prof = global_settings["profiles"].setdefault(global_settings["selected_profile"], {})
         prof.update({"angle": angle, "di_gain": gain, "di_spring": spring, "di_damper": damper,
-                     "di_center": di_center, "di_persist": persist})
+                     "di_center": di_center, "di_ramp": di_ramp, "di_persist": persist})
         save_settings()
         if not silent:
             _defer_infobar("success", tr("apply.ok_title"), tr("apply.ok_body"), duration=2000,
                             position=InfoBarPosition.TOP, parent=self)
 
     def _restore_geometry(self):
-        self.resize(int(global_settings.get("win_w", 1366)), int(global_settings.get("win_h", 720)))
+        # One rule instead of per-tab tinkering: the window may not shrink
+        # below what the tallest tab needs, so no tab ever gets a scrollbar.
+        # Clamped to the screen so it still fits on small/720p displays (there
+        # scrolling is unavoidable - the content is simply taller).
+        try:
+            avail = QApplication.primaryScreen().availableGeometry().height()
+            self.setMinimumHeight(max(560, min(792, avail - 48)))
+        except Exception:
+            self.setMinimumHeight(720)
+        self.resize(int(global_settings.get("win_w", 1366)),
+                    max(int(global_settings.get("win_h", 720)), self.minimumHeight()))
         x = global_settings.get("win_x"); y = global_settings.get("win_y")
         placed = False
         try:
@@ -3192,7 +3422,7 @@ class ControlHub(FramelessWindow):
     def _teardown(self):
         global running
         running = False
-        try: ffb_write(autocenter_cmd(0, 7)); ffb_write(stop_forces_cmd())
+        try: ffb_write(autocenter_cmd(0)); ffb_write(stop_forces_cmd())
         except Exception: pass
         try:
             if not self.isMaximized() and self.width() > 200 and self.height() > 200:

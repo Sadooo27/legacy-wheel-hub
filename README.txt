@@ -1,5 +1,5 @@
 ==============================================================
-  Legacy Wheel Hub  v1.0.1
+  Legacy Wheel Hub  v1.1.2
   A free control panel for legacy Logitech force-feedback wheels
   (Driving Force GT and G27).
 ==============================================================
@@ -25,9 +25,37 @@ Legacy Wheel Hub and plug in your wheel.
 - INPUT MONITOR: check every button and axis live.
 - Enable "Auto-load on connect" to apply your settings automatically
   once the wheel finishes its power-on calibration.
+- PROFILES: selecting a profile applies its settings instantly. You can
+  assign a game .exe and a LUT to each profile.
+- CENTERING RAMP: controls how sharply the centering force builds up
+  around center. Higher = tighter center, lower = softer. Default is 7.
+  Same strength with a different ramp feels very different - try it.
+
+-------------------------------------------------------------
+ GLOBAL LUT (FFB post-processing)
+-------------------------------------------------------------
+Gear-driven wheels (G27/DFGT) have a force-feedback deadzone near
+center. A LUT curve remaps the game's force so small inputs are felt,
+for a more linear response - even in games without built-in LUT support.
+
+  1. LUT tab -> "Import LUT" to add a .lut file (generate one for your
+     wheel with WheelCheck + LUT Generator). You can keep several and
+     choose a different one per profile.
+  2. Tick "Enable FFB post-processing".
+  3. Edit/create a profile and choose the game's .exe. The app copies a
+     small dinput8.dll helper next to that game so its force feedback is
+     routed through your LUT.
+
+Do NOT use a LUT in sims that already have their own (Assetto Corsa,
+ACC, iRacing) - it would double the curve.
+
+  !! ONLINE GAMES: Do not use the LUT / dinput8.dll helper in online
+     games. Some anti-cheat systems may flag third-party DLLs next to
+     the game. If you use it online, it is AT YOUR OWN RISK.
 
 Your settings are stored per-user at:
     %APPDATA%\Legacy Wheel Hub\settings.json
+Imported LUTs and the helper log live in the app's own "luts" folder.
 
 -------------------------------------------------------------
  LICENSE
