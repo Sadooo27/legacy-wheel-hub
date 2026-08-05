@@ -402,7 +402,7 @@ WHEEL_PNG = _find_wheel()
 SETTINGS_FILE = os.path.join(_data_dir(), "settings.json")
 STEER_CENTER = 8192
 ACCENT_FALLBACK = "#ff6a1a"
-HUB_VERSION = "v1.1.2"
+HUB_VERSION = "v1.1.3"
 AUTHOR = "Sadooo"
 
 
@@ -562,137 +562,137 @@ LANG = {
         "info.active": "Active", "info.standby": "Standby",
     },
     "tr": {
-        "nav.home": "Ana Sayfa", "nav.wheel": "Direksiyon Ayarlar\u0131", "nav.ffb": "FFB Testi",
-        "nav.input": "Giri\u015f \u0130zleyici", "nav.apply": "Ayarlar\u0131 Uygula",
-        "nav.theme": "Tema De\u011fi\u015ftir", "nav.about": "Hakk\u0131nda",
-        "conn.connecting": "Ba\u011flan\u0131yor\u2026", "conn.not_connected": "Ba\u011fl\u0131 De\u011fil",
-        "home.title": "Canl\u0131 Telemetri", "home.steering": "D\u0130REKS\u0130YON A\u00c7ISI",
-        "home.clutch": "DEBR\u0130YAJ", "home.brake": "FREN", "home.throttle": "GAZ",
+        "nav.home": "Ana Sayfa", "nav.wheel": "Direksiyon Ayarları", "nav.ffb": "FFB Testi",
+        "nav.input": "Giriş İzleyici", "nav.apply": "Ayarları Uygula",
+        "nav.theme": "Tema Değiştir", "nav.about": "Hakkında",
+        "conn.connecting": "Bağlanıyor…", "conn.not_connected": "Bağlı Değil",
+        "home.title": "Canlı Telemetri", "home.steering": "DİREKSİYON AÇISI",
+        "home.clutch": "DEBRİYAJ", "home.brake": "FREN", "home.throttle": "GAZ",
         "home.center": "Direksiyonu Ortala", "home.na": "Yok",
-        "prof.label": "PROF\u0130L", "prof.auto": "Otomatik Y\u00fckle", "prof.add": "Yeni profil",
-        "prof.dup": "Profili \u00e7o\u011falt", "prof.ren": "Profili yeniden adland\u0131r",
+        "prof.label": "PROFİL", "prof.auto": "Otomatik Yükle", "prof.add": "Yeni profil",
+        "prof.dup": "Profili çoğalt", "prof.ren": "Profili yeniden adlandır",
         "prof.del": "Profili sil", "prof.new_title": "Yeni Profil",
-        "prof.new_hint": "Profil ad\u0131", "prof.ren_title": "Profili Yeniden Adland\u0131r",
-        "prof.del_title": "Profili Sil", "prof.del_msg": "\u201c{0}\u201d profili silinsin mi? Bu i\u015flem geri al\u0131namaz.",
-        "prof.copy_suffix": " Kopya", "dlg.ok": "Tamam", "dlg.cancel": "\u0130ptal", "dlg.delete": "Sil",
-        "wheel.title": "Direksiyon Ayarlar\u0131", "wheel.ffb": "Kuvvet Geri Bildirimi",
-        "wheel.overall": "Genel Efekt G\u00fcc\u00fc",
-        "wheel.overall_h": "\u00c7o\u011fu oyunda merkez FFB \u00f6l\u00fc b\u00f6lgesini gidermek i\u00e7in %101 yap\u0131n. (Oyun yeniden ba\u015flat\u0131lmal\u0131)",
-        "wheel.spring": "Yay Efekti", "wheel.spring_h": "S\u00fcr\u00fcc\u00fc tabanl\u0131 yay (\u00f6nerilen: %0).",
-        "wheel.damper": "Damper Efekti", "wheel.damper_h": "S\u00fcr\u00fcc\u00fc tabanl\u0131 s\u00f6n\u00fcmleme (\u00f6nerilen: %0).",
-        "wheel.center_cb": "FFB oyunlar\u0131nda ortalama yay\u0131n\u0131 etkinle\u015ftir",
-        "wheel.center": "Ortalama Yay\u0131", "wheel.center_h": "S\u00fcr\u00fcc\u00fc tabanl\u0131 otomatik ortalama g\u00fcc\u00fc.",
-        "wheel.ramp": "Ortalama Rampas\u0131", "wheel.ramp_h": "Yaln\u0131zca ortalama yay\u0131n\u0131 \u015fekillendirir \u2014 o 0 iken etkisizdir. Varsay\u0131lan 7.",
-        "wheel.steering": "Direksiyon", "wheel.rotation": "D\u00f6n\u00fc\u015f Aral\u0131\u011f\u0131",
-        "wheel.rotation_h": "Maksimum direksiyon d\u00f6n\u00fc\u015f a\u00e7\u0131s\u0131.",
-        "ffb.title": "KUVVET GER\u0130 B\u0130LD\u0130R\u0130M TEST\u0130",
-        "ffb.subtitle": "FFB motorunu do\u011frudan test edin. Hi\u00e7bir oyun direksiyonu kullanm\u0131yorken yap\u0131lmas\u0131 en iyisidir.",
-        "ffb.strength": "Test G\u00fcc\u00fc", "ffb.strength_h": "\u0130tme, Yay ve Tarama testlerinde kullan\u0131lan g\u00fc\u00e7.",
-        "ffb.push_l": "Sola \u0130t", "ffb.push_r": "Sa\u011fa \u0130t",
-        "ffb.spring": "Yay (Merkez)", "ffb.spring_stop": "Yay\u0131 Durdur",
-        "ffb.sweep": "Otomatik Tarama", "ffb.sweep_stop": "Taramay\u0131 Durdur",
-        "ffb.advanced": "GEL\u0130\u015eM\u0130\u015e MOTOR TESTLER\u0130",
-        "ffb.pulse_l": "Sol Darbe", "ffb.pulse_r": "Sa\u011f Darbe",
-        "ffb.vibe_light": "Hafif Titre\u015fim", "ffb.vibe_med": "Orta Titre\u015fim",
-        "ffb.vibe_fast": "H\u0131zl\u0131 G\u00fcr\u00fclt\u00fc", "ffb.vibe_heavy": "A\u011f\u0131r Titre\u015fim",
-        "ffb.stop": "T\u00dcM KUVVETLER\u0130 DURDUR",
-        "input.title": "Giri\u015f \u0130zleyici", "input.led": "LED Kar\u015f\u0131lama Testi",
-        "input.wheel": "D\u0130REKS\u0130YON", "input.shifter": "VITES \u00dcN\u0130TES\u0130", "input.gear": "V\u0130TES  (H-D\u00dcZEN\u0130)",
-        "input.lpad": "SOL PADDLE", "input.rpad": "SA\u011e PADDLE",
-        "input.face": "Y\u00dcZ TU\u015eLARI", "input.dpad": "Y\u00d6N TU\u015eU", "input.horn": "KORNA",
-        "input.led_nc": "Direksiyon ba\u011fl\u0131 de\u011fil.",
-        "input.led_g27": "LED testi yaln\u0131zca G27 i\u00e7indir (DFGT'de RPM LED'i yoktur).",
-        "input.led_run": "LED kar\u015f\u0131lama\u2026 (s\u00fcr\u00fcc\u00fc raporu ge\u00e7irirse \u00e7al\u0131\u015f\u0131r)",
+        "prof.new_hint": "Profil adı", "prof.ren_title": "Profili Yeniden Adlandır",
+        "prof.del_title": "Profili Sil", "prof.del_msg": "“{0}” profili silinsin mi? Bu işlem geri alınamaz.",
+        "prof.copy_suffix": " Kopya", "dlg.ok": "Tamam", "dlg.cancel": "İptal", "dlg.delete": "Sil",
+        "wheel.title": "Direksiyon Ayarları", "wheel.ffb": "Kuvvet Geri Bildirimi",
+        "wheel.overall": "Genel Efekt Gücü",
+        "wheel.overall_h": "Çoğu oyunda merkez FFB ölü bölgesini gidermek için %101 yapın. (Oyun yeniden başlatılmalı)",
+        "wheel.spring": "Yay Efekti", "wheel.spring_h": "Sürücü tabanlı yay (önerilen: %0).",
+        "wheel.damper": "Damper Efekti", "wheel.damper_h": "Sürücü tabanlı sönümleme (önerilen: %0).",
+        "wheel.center_cb": "FFB oyunlarında ortalama yayını etkinleştir",
+        "wheel.center": "Ortalama Yayı", "wheel.center_h": "Sürücü tabanlı otomatik ortalama gücü.",
+        "wheel.ramp": "Ortalama Rampası", "wheel.ramp_h": "Yalnızca ortalama yayını şekillendirir — o 0 iken etkisizdir. Varsayılan 7.",
+        "wheel.steering": "Direksiyon", "wheel.rotation": "Dönüş Aralığı",
+        "wheel.rotation_h": "Maksimum direksiyon dönüş açısı.",
+        "ffb.title": "KUVVET GERİ BİLDİRİM TESTİ",
+        "ffb.subtitle": "FFB motorunu doğrudan test edin. Hiçbir oyun direksiyonu kullanmıyorken yapılması en iyisidir.",
+        "ffb.strength": "Test Gücü", "ffb.strength_h": "İtme, Yay ve Tarama testlerinde kullanılan güç.",
+        "ffb.push_l": "Sola İt", "ffb.push_r": "Sağa İt",
+        "ffb.spring": "Yay (Merkez)", "ffb.spring_stop": "Yayı Durdur",
+        "ffb.sweep": "Otomatik Tarama", "ffb.sweep_stop": "Taramayı Durdur",
+        "ffb.advanced": "GELİŞMİŞ MOTOR TESTLERİ",
+        "ffb.pulse_l": "Sol Darbe", "ffb.pulse_r": "Sağ Darbe",
+        "ffb.vibe_light": "Hafif Titreşim", "ffb.vibe_med": "Orta Titreşim",
+        "ffb.vibe_fast": "Hızlı Gürültü", "ffb.vibe_heavy": "Ağır Titreşim",
+        "ffb.stop": "TÜM KUVVETLERİ DURDUR",
+        "input.title": "Giriş İzleyici", "input.led": "LED Karşılama Testi",
+        "input.wheel": "DİREKSİYON", "input.shifter": "VITES ÜNİTESİ", "input.gear": "VİTES  (H-DÜZENİ)",
+        "input.lpad": "SOL PADDLE", "input.rpad": "SAĞ PADDLE",
+        "input.face": "YÜZ TUŞLARI", "input.dpad": "YÖN TUŞU", "input.horn": "KORNA",
+        "input.led_nc": "Direksiyon bağlı değil.",
+        "input.led_g27": "LED testi yalnızca G27 içindir (DFGT'de RPM LED'i yoktur).",
+        "input.led_run": "LED karşılama… (sürücü raporu geçirirse çalışır)",
         "about.title": "Cihaz Bilgisi", "about.settings": "Ayarlar",
-        "about.status": "Durum", "about.connected": "Ba\u011fl\u0131", "about.not_connected": "Ba\u011fl\u0131 De\u011fil",
-        "about.model": "Model", "about.hwid": "Donan\u0131m Kimli\u011fi", "about.axis": "Eksen \u00c7\u00f6z\u00fcn\u00fcrl\u00fc\u011f\u00fc",
+        "about.status": "Durum", "about.connected": "Bağlı", "about.not_connected": "Bağlı Değil",
+        "about.model": "Model", "about.hwid": "Donanım Kimliği", "about.axis": "Eksen Çözünürlüğü",
         "about.ffb": "Kuvvet Geri Bildirimi", "about.language": "Dil", "about.theme": "Tema",
-        "about.theme_dark": "Koyu", "about.theme_light": "A\u00e7\u0131k",
+        "about.theme_dark": "Koyu", "about.theme_light": "Açık",
         "about.testmode": "Test Cihaz Modu", "about.testmode_h":
-            "Donan\u0131m ba\u011fl\u0131 olmadan aktif direksiyon d\u00fczenini de\u011fi\u015ftirin. \u201cOtomatik\u201d ger\u00e7ek alg\u0131lamay\u0131 kullan\u0131r.",
-        "about.test_auto": "Otomatik (alg\u0131la)", "about.footer":
+            "Donanım bağlı olmadan aktif direksiyon düzenini değiştirin. “Otomatik” gerçek algılamayı kullanır.",
+        "about.test_auto": "Otomatik (algıla)", "about.footer":
             "Legacy Logitech Wheels - Control Hub (PySide6 / Fluent)",
-        "about.sec_hw": "DONANIM TANILAMA", "about.sec_sensor": "SENS\u00d6R & FFB \u00d6ZELL\u0130KLER\u0130",
-        "about.sec_sw": "YAZILIM & S\u00dcR\u00dcC\u00dc DURUMU", "about.sec_credits": "KATKIDA BULUNANLAR",
-        "about.devmodel": "Cihaz Modeli", "about.interface": "Aray\u00fcz", "about.power": "G\u00fc\u00e7 Durumu",
-        "about.tracking": "Takip Sistemi", "about.polling": "Maks. Yoklama H\u0131z\u0131",
-        "about.opmode": "\u00c7al\u0131\u015fma Modu", "about.api": "API Ba\u011flant\u0131s\u0131", "about.hub": "Hub S\u00fcr\u00fcm\u00fc",
-        "about.author": "Yazar", "about.sec_about": "HAKKINDA", "about.repo": "GitHub deposu", "about.license": "Lisans: GPL-3.0", "about.disclaimer": "Logitech ile ba\u011flant\u0131s\u0131 yoktur. T\u00fcm ticari markalar sahiplerine aittir.", "about.power_active": "{0} / Aktif",
-        "about.power_standby": "Beklemede / Ba\u011fl\u0131 De\u011fil",
-        "about.opmode_active": "Yerel Geli\u015fmi\u015f Mod (Kilit A\u00e7\u0131k)",
-        "about.opmode_idle": "Bo\u015fta / Cihaz Bekleniyor",
-        "about.tray": "Sistem Tepsisine K\u00fc\u00e7\u00fclt",
-        "about.tray_h": "A\u00e7\u0131kken, k\u00fc\u00e7\u00fcltme tu\u015fu uygulamay\u0131 sistem tepsisine (gizli simgeler) gizler.",
-        "tray.show": "G\u00f6ster", "tray.quit": "\u00c7\u0131k\u0131\u015f",
-        "apply.ok_title": "Uyguland\u0131", "apply.ok_body": "Ayarlar direksiyona uyguland\u0131.",
-        "ui.presets": "HAZIR AYARLAR", "ui.presets_sub": "Oyuna ba\u015flamadan \u00f6nce se\u00e7in.",
-        "ui.add_profile": "+  Oyun Profili Ekle", "ui.autoload": "Ba\u011flan\u0131nca otomatik y\u00fckle",
-        "ui.telemetry": "CANLI TELEMETR\u0130", "ui.center": "Merkezle",
-        "ui.apply": "UYGULA", "conn.connected": "Ba\u011fl\u0131", "conn.test": "Test Modu",
+        "about.sec_hw": "DONANIM TANILAMA", "about.sec_sensor": "SENSÖR & FFB ÖZELLİKLERİ",
+        "about.sec_sw": "YAZILIM & SÜRÜCÜ DURUMU", "about.sec_credits": "KATKIDA BULUNANLAR",
+        "about.devmodel": "Cihaz Modeli", "about.interface": "Arayüz", "about.power": "Güç Durumu",
+        "about.tracking": "Takip Sistemi", "about.polling": "Maks. Yoklama Hızı",
+        "about.opmode": "Çalışma Modu", "about.api": "API Bağlantısı", "about.hub": "Hub Sürümü",
+        "about.author": "Yazar", "about.sec_about": "HAKKINDA", "about.repo": "GitHub deposu", "about.license": "Lisans: GPL-3.0", "about.disclaimer": "Logitech ile bağlantısı yoktur. Tüm ticari markalar sahiplerine aittir.", "about.power_active": "{0} / Aktif",
+        "about.power_standby": "Beklemede / Bağlı Değil",
+        "about.opmode_active": "Yerel Gelişmiş Mod (Kilit Açık)",
+        "about.opmode_idle": "Boşta / Cihaz Bekleniyor",
+        "about.tray": "Sistem Tepsisine Küçült",
+        "about.tray_h": "Açıkken, küçültme tuşu uygulamayı sistem tepsisine (gizli simgeler) gizler.",
+        "tray.show": "Göster", "tray.quit": "Çıkış",
+        "apply.ok_title": "Uygulandı", "apply.ok_body": "Ayarlar direksiyona uygulandı.",
+        "ui.presets": "HAZIR AYARLAR", "ui.presets_sub": "Oyuna başlamadan önce seçin.",
+        "ui.add_profile": "+  Oyun Profili Ekle", "ui.autoload": "Bağlanınca otomatik yükle",
+        "ui.telemetry": "CANLI TELEMETRİ", "ui.center": "Merkezle",
+        "ui.apply": "UYGULA", "conn.connected": "Bağlı", "conn.test": "Test Modu",
         "tab.lut": "LUT",
-        "lut.sec": "FFB SON \u0130\u015eLEME", "lut.enable": "FFB son i\u015flemeyi etkinle\u015ftir",
-        "lut.enable_h": "Oyunun force feedback'ini se\u00e7ili LUT e\u011frisinden ge\u00e7irerek t\u00fcm oyunlarda uygular (dinput8 proxy ile).",
-        "lut.select": "LUT e\u011frisi", "lut.import": "LUT \u0130\u00e7e Aktar", "lut.delete": "LUT Sil", "lut.none": "(yok)",
-        "lut.del_title": "LUT Sil", "lut.del_body": "\u201c{}\u201d LUT dosyas\u0131 diskten silinsin mi? Bu geri al\u0131namaz.",
+        "lut.sec": "FFB SON İŞLEME", "lut.enable": "FFB son işlemeyi etkinleştir",
+        "lut.enable_h": "Oyunun force feedback'ini seçili LUT eğrisinden geçirerek tüm oyunlarda uygular (dinput8 proxy ile).",
+        "lut.select": "LUT eğrisi", "lut.import": "LUT İçe Aktar", "lut.delete": "LUT Sil", "lut.none": "(yok)",
+        "lut.del_title": "LUT Sil", "lut.del_body": "“{}” LUT dosyası diskten silinsin mi? Bu geri alınamaz.",
         "lut.deleted": "LUT silindi",
-        "lut.empty": "Hen\u00fcz LUT dosyas\u0131 yok. Eklemek i\u00e7in \u201cLUT \u0130\u00e7e Aktar\u201d\u2019a t\u0131kla.",
-        "lut.warn": "\u26a0  \u00c7evrimi\u00e7i oyunlarda kullanmay\u0131n. Kullan\u0131rsan\u0131z risk size aittir!",
-        "lut.global_notice": "LUT her oyun i\u00e7in ayr\u0131 ayarlan\u0131r. Bir oyun profili olu\u015fturup (Presets'te \uff0b) exe'sini se\u00e7in, sonra LUT'unu buradan se\u00e7in. Global profil LUT uygulamaz.",
-        "lut.axis_in": "Giri\u015f", "lut.axis_out": "\u00c7\u0131k\u0131\u015f",
-        "lut.imported": "LUT i\u00e7e aktar\u0131ld\u0131", "lut.import_fail": "LUT i\u00e7e aktar\u0131lamad\u0131",
-        "lut.game": "OYUN", "lut.exe": "Oyun exe dosyas\u0131", "lut.exe_pick": "Se\u00e7\u2026",
-        "lut.exe_none": "Oyun se\u00e7ilmedi",
-        "prof.edit": "Profili d\u00fczenle", "prof.exe": "Oyun exe dosyas\u0131",
-        "prof.exe_hint": "UE launcher'l\u0131 oyunlarda otomatik bulunamazsa ger\u00e7ek ...-Shipping.exe'yi se\u00e7in.",
-        "prof.logo": "Simge (bir .exe'den)", "prof.logo_pick": "Simge se\u00e7\u2026",
-        "prof.exe_pick": "Oyun se\u00e7\u2026", "prof.name_lbl": "Profil ad\u0131",
-        "proxy.installed": "Proxy kuruldu", "proxy.removed": "Proxy kald\u0131r\u0131ld\u0131",
-        "proxy.installed_body": "dinput8.dll oyunun yan\u0131na kopyaland\u0131.",
-        "proxy.locked": "Proxy devre d\u0131\u015f\u0131", "proxy.locked_body": "Oyun kapand\u0131\u011f\u0131nda temizlenecek.",
-        "proxy.removed": "Proxy kald\u0131r\u0131ld\u0131", "proxy.removed_body": "dinput8.dll oyun klas\u00f6r\u00fcnden kald\u0131r\u0131ld\u0131.",
-        "proxy.err_noexe": "Oyun exe'si bulunamad\u0131.", "proxy.err_arch": "Desteklenmeyen mimari.",
-        "proxy.err_asset": "G\u00f6m\u00fcl\u00fc proxy DLL'i yok (assets/proxy).",
-        "proxy.err_write": "DLL yaz\u0131lamad\u0131 (oyun a\u00e7\u0131k m\u0131? klas\u00f6r yaz\u0131labilir mi?).",
+        "lut.empty": "Henüz LUT dosyası yok. Eklemek için “LUT İçe Aktar”a tıkla.",
+        "lut.warn": "⚠  Çevrimiçi oyunlarda kullanmayın. Kullanırsanız risk size aittir!",
+        "lut.global_notice": "LUT her oyun için ayrı ayarlanır. Bir oyun profili oluşturup (Presets'te ＋) exe'sini seçin, sonra LUT'unu buradan seçin. Global profil LUT uygulamaz.",
+        "lut.axis_in": "Giriş", "lut.axis_out": "Çıkış",
+        "lut.imported": "LUT içe aktarıldı", "lut.import_fail": "LUT içe aktarılamadı",
+        "lut.game": "OYUN", "lut.exe": "Oyun exe dosyası", "lut.exe_pick": "Seç…",
+        "lut.exe_none": "Oyun seçilmedi",
+        "prof.edit": "Profili düzenle", "prof.exe": "Oyun exe dosyası",
+        "prof.exe_hint": "UE launcher'lı oyunlarda otomatik bulunamazsa gerçek ...-Shipping.exe'yi seçin.",
+        "prof.logo": "Simge (bir .exe'den)", "prof.logo_pick": "Simge seç…",
+        "prof.exe_pick": "Oyun seç…", "prof.name_lbl": "Profil adı",
+        "proxy.installed": "Proxy kuruldu", "proxy.removed": "Proxy kaldırıldı",
+        "proxy.installed_body": "dinput8.dll oyunun yanına kopyalandı.",
+        "proxy.locked": "Proxy devre dışı", "proxy.locked_body": "Oyun kapandığında temizlenecek.",
+        "proxy.removed": "Proxy kaldırıldı", "proxy.removed_body": "dinput8.dll oyun klasöründen kaldırıldı.",
+        "proxy.err_noexe": "Oyun exe'si bulunamadı.", "proxy.err_arch": "Desteklenmeyen mimari.",
+        "proxy.err_asset": "Gömülü proxy DLL'i yok (assets/proxy).",
+        "proxy.err_write": "DLL yazılamadı (oyun açık mı? klasör yazılabilir mi?).",
         "proxy.foreign_title": "Mevcut dinput8.dll",
-        "proxy.foreign_body": "Bu klas\u00f6rde LWH'nin kurmad\u0131\u011f\u0131 bir dinput8.dll var (ba\u015fka bir mod/wrapper). \u00dczerine yaz\u0131ls\u0131n m\u0131?",
-        "tab.wheel": "D\u0130REKS\u0130YON", "tab.ffb": "FFB TEST\u0130", "tab.input": "G\u0130R\u0130\u015e \u0130ZLEY\u0130C\u0130",
-        "tab.info": "B\u0130LG\u0130", "wheel.sec_ffb": "KUVVET GER\u0130 B\u0130LD\u0130R\u0130M\u0130", "wheel.sec_steer": "D\u0130REKS\u0130YON AYARLARI",
-        "ffb.reset": "S\u00fcr\u00fcc\u00fc FFB S\u0131f\u0131rla", "ffb.reset_h": "Bu uygulaman\u0131n yazd\u0131\u011f\u0131 t\u00fcm s\u00fcr\u00fcc\u00fc FFB registry de\u011ferlerini siler.",
-        "set.title": "AYARLAR", "set.appearance": "G\u00d6R\u00dcN\u00dcM", "set.general": "GENEL", "set.testing": "TEST",
-        "set.theme": "Tema", "set.language": "Dil", "set.tray": "Sistem tepsisine k\u00fc\u00e7\u00fclt",
-        "set.tray_h": "A\u00e7\u0131kken, k\u00fc\u00e7\u00fcltme tu\u015fu uygulamay\u0131 sistem tepsisine (gizli simgeler) gizler.",
-        "set.devmode": "Cihaz alg\u0131lama modu",
-        "set.devmode_h": "Donan\u0131ms\u0131z bir d\u00fczen zorla. \u201cOtomatik\u201d ger\u00e7ek alg\u0131lamay\u0131 kullan\u0131r.", "set.ui_scale": "Aray\u00fcz \u00f6l\u00e7e\u011fi", "set.ui_scale_h": "Y\u00fcksek \u00e7\u00f6z\u00fcn\u00fcrl\u00fckl\u00fc (1440p/4K) ekranlarda t\u00fcm aray\u00fcz\u00fc b\u00fcy\u00fct\u00fcr. Uygulama yeniden ba\u015flat\u0131l\u0131nca etkin olur.", "set.restart_hint": "Yeni \u00f6l\u00e7e\u011fin uygulanmas\u0131 i\u00e7in uygulamay\u0131 yeniden ba\u015flat\u0131n.",
-        "info.opmode_active": "Yerel Geli\u015fmi\u015f Mod (Kilit A\u00e7\u0131k)", "info.opmode_idle": "Bo\u015fta / Ba\u011fl\u0131 De\u011fil",
+        "proxy.foreign_body": "Bu klasörde LWH'nin kurmadığı bir dinput8.dll var (başka bir mod/wrapper). Üzerine yazılsın mı?",
+        "tab.wheel": "DİREKSİYON", "tab.ffb": "FFB TESTİ", "tab.input": "GİRİŞ İZLEYİCİ",
+        "tab.info": "BİLGİ", "wheel.sec_ffb": "KUVVET GERİ BİLDİRİMİ", "wheel.sec_steer": "DİREKSİYON AYARLARI",
+        "ffb.reset": "Sürücü FFB Sıfırla", "ffb.reset_h": "Bu uygulamanın yazdığı tüm sürücü FFB registry değerlerini siler.",
+        "set.title": "AYARLAR", "set.appearance": "GÖRÜNÜM", "set.general": "GENEL", "set.testing": "TEST",
+        "set.theme": "Tema", "set.language": "Dil", "set.tray": "Sistem tepsisine küçült",
+        "set.tray_h": "Açıkken, küçültme tuşu uygulamayı sistem tepsisine (gizli simgeler) gizler.",
+        "set.devmode": "Cihaz algılama modu",
+        "set.devmode_h": "Donanımsız bir düzen zorla. “Otomatik” gerçek algılamayı kullanır.", "set.ui_scale": "Arayüz ölçeği", "set.ui_scale_h": "Yüksek çözünürlüklü (1440p/4K) ekranlarda tüm arayüzü büyütür. Uygulama yeniden başlatılınca etkin olur.", "set.restart_hint": "Yeni ölçeğin uygulanması için uygulamayı yeniden başlatın.",
+        "info.opmode_active": "Yerel Gelişmiş Mod (Kilit Açık)", "info.opmode_idle": "Boşta / Bağlı Değil",
         "info.active": "Aktif", "info.standby": "Beklemede",
     },
     "de": {
         "nav.home": "Startseite", "nav.wheel": "Lenkrad-Einstellungen", "nav.ffb": "FFB-Test",
         "nav.input": "Eingangsmonitor", "nav.apply": "Einstellungen anwenden",
-        "nav.theme": "Design wechseln", "nav.about": "\u00dcber",
-        "conn.connecting": "Verbinden\u2026", "conn.not_connected": "Nicht verbunden",
+        "nav.theme": "Design wechseln", "nav.about": "Über",
+        "conn.connecting": "Verbinden…", "conn.not_connected": "Nicht verbunden",
         "home.title": "Live-Telemetrie", "home.steering": "LENKWINKEL",
         "home.clutch": "KUPPLUNG", "home.brake": "BREMSE", "home.throttle": "GAS",
         "home.center": "Lenkrad zentrieren", "home.na": "N/V",
         "prof.label": "PROFIL", "prof.auto": "Auto-Laden", "prof.add": "Neues Profil",
         "prof.dup": "Profil duplizieren", "prof.ren": "Profil umbenennen",
-        "prof.del": "Profil l\u00f6schen", "prof.new_title": "Neues Profil",
+        "prof.del": "Profil löschen", "prof.new_title": "Neues Profil",
         "prof.new_hint": "Profilname", "prof.ren_title": "Profil umbenennen",
-        "prof.del_title": "Profil l\u00f6schen", "prof.del_msg": "Profil \u201e{0}\u201c l\u00f6schen? Dies kann nicht r\u00fcckg\u00e4ngig gemacht werden.",
-        "prof.copy_suffix": " Kopie", "dlg.ok": "OK", "dlg.cancel": "Abbrechen", "dlg.delete": "L\u00f6schen",
+        "prof.del_title": "Profil löschen", "prof.del_msg": "Profil „{0}“ löschen? Dies kann nicht rückgängig gemacht werden.",
+        "prof.copy_suffix": " Kopie", "dlg.ok": "OK", "dlg.cancel": "Abbrechen", "dlg.delete": "Löschen",
         "wheel.title": "Lenkrad-Einstellungen", "wheel.ffb": "Force Feedback",
-        "wheel.overall": "Gesamtst\u00e4rke der Effekte",
-        "wheel.overall_h": "Auf 101% setzen, um die zentrale FFB-Totzone in den meisten Spielen zu beheben. (Spiel-Neustart n\u00f6tig)",
+        "wheel.overall": "Gesamtstärke der Effekte",
+        "wheel.overall_h": "Auf 101% setzen, um die zentrale FFB-Totzone in den meisten Spielen zu beheben. (Spiel-Neustart nötig)",
         "wheel.spring": "Feder-Effekt", "wheel.spring_h": "Treiberbasierte Feder (empfohlen: 0%).",
-        "wheel.damper": "D\u00e4mpfer-Effekt", "wheel.damper_h": "Treiberbasierte D\u00e4mpfung (empfohlen: 0%).",
+        "wheel.damper": "Dämpfer-Effekt", "wheel.damper_h": "Treiberbasierte Dämpfung (empfohlen: 0%).",
         "wheel.center_cb": "Zentrierfeder in FFB-Spielen aktivieren",
-        "wheel.center": "Zentrierfeder", "wheel.center_h": "Treiberbasierte Auto-Zentrierst\u00e4rke.",
-        "wheel.ramp": "Zentrier-Rampe", "wheel.ramp_h": "Formt nur die Zentrierfeder \u2014 ohne Wirkung, wenn sie 0 ist. Standard 7.",
+        "wheel.center": "Zentrierfeder", "wheel.center_h": "Treiberbasierte Auto-Zentrierstärke.",
+        "wheel.ramp": "Zentrier-Rampe", "wheel.ramp_h": "Formt nur die Zentrierfeder — ohne Wirkung, wenn sie 0 ist. Standard 7.",
         "wheel.steering": "Lenkung", "wheel.rotation": "Drehbereich",
         "wheel.rotation_h": "Maximaler Lenkdrehwinkel.",
         "ffb.title": "FORCE-FEEDBACK-TEST",
         "ffb.subtitle": "Testen Sie den FFB-Motor direkt. Am besten, wenn kein Spiel das Lenkrad nutzt.",
-        "ffb.strength": "Teststärke", "ffb.strength_h": "St\u00e4rke f\u00fcr Druck-, Feder- und Sweep-Tests.",
+        "ffb.strength": "Teststärke", "ffb.strength_h": "Stärke für Druck-, Feder- und Sweep-Tests.",
         "ffb.push_l": "Nach links", "ffb.push_r": "Nach rechts",
         "ffb.spring": "Feder (Mitte)", "ffb.spring_stop": "Feder stoppen",
         "ffb.sweep": "Auto-Sweep", "ffb.sweep_stop": "Sweep stoppen",
@@ -700,74 +700,74 @@ LANG = {
         "ffb.pulse_l": "Puls links", "ffb.pulse_r": "Puls rechts",
         "ffb.vibe_light": "Leichte Vibration", "ffb.vibe_med": "Mittlere Vibration",
         "ffb.vibe_fast": "Schnelles Rumpeln", "ffb.vibe_heavy": "Starke Vibration",
-        "ffb.stop": "ALLE KR\u00c4FTE STOPPEN",
-        "input.title": "Eingangsmonitor", "input.led": "LED-Begr\u00fc\u00dfungstest",
+        "ffb.stop": "ALLE KRÄFTE STOPPEN",
+        "input.title": "Eingangsmonitor", "input.led": "LED-Begrüßungstest",
         "input.wheel": "LENKRAD", "input.shifter": "SCHALTEINHEIT", "input.gear": "GANG  (H-SCHALTUNG)",
         "input.lpad": "LINKES PADDLE", "input.rpad": "RECHTES PADDLE",
         "input.face": "TASTEN", "input.dpad": "STEUERKREUZ", "input.horn": "HUPE",
         "input.led_nc": "Lenkrad nicht verbunden.",
-        "input.led_g27": "LED-Test nur f\u00fcr G27 (DFGT hat keine RPM-LEDs).",
-        "input.led_run": "LED-Begr\u00fc\u00dfung\u2026 (funktioniert, wenn der Treiber den Bericht durchl\u00e4sst)",
-        "about.title": "Ger\u00e4teinfo", "about.settings": "Einstellungen",
+        "input.led_g27": "LED-Test nur für G27 (DFGT hat keine RPM-LEDs).",
+        "input.led_run": "LED-Begrüßung… (funktioniert, wenn der Treiber den Bericht durchlässt)",
+        "about.title": "Geräteinfo", "about.settings": "Einstellungen",
         "about.status": "Status", "about.connected": "Verbunden", "about.not_connected": "Nicht verbunden",
-        "about.model": "Modell", "about.hwid": "Hardware-ID", "about.axis": "Achsenaufl\u00f6sung",
+        "about.model": "Modell", "about.hwid": "Hardware-ID", "about.axis": "Achsenauflösung",
         "about.ffb": "Force Feedback", "about.language": "Sprache", "about.theme": "Design",
         "about.theme_dark": "Dunkel", "about.theme_light": "Hell",
-        "about.testmode": "Test-Ger\u00e4temodus", "about.testmode_h":
-            "Aktives Lenkrad-Layout ohne angeschlossene Hardware umschalten. \u201eAuto\u201c nutzt echte Erkennung.",
+        "about.testmode": "Test-Gerätemodus", "about.testmode_h":
+            "Aktives Lenkrad-Layout ohne angeschlossene Hardware umschalten. „Auto“ nutzt echte Erkennung.",
         "about.test_auto": "Auto (erkennen)", "about.footer":
             "Legacy Logitech Wheels - Control Hub (PySide6 / Fluent)",
         "about.sec_hw": "HARDWARE-DIAGNOSE", "about.sec_sensor": "SENSOR- & FFB-SPEZIFIKATIONEN",
         "about.sec_sw": "SOFTWARE- & TREIBERSTATUS", "about.sec_credits": "MITWIRKENDE",
-        "about.devmodel": "Ger\u00e4temodell", "about.interface": "Schnittstelle", "about.power": "Energiestatus",
+        "about.devmodel": "Gerätemodell", "about.interface": "Schnittstelle", "about.power": "Energiestatus",
         "about.tracking": "Tracking-System", "about.polling": "Max. Abtastrate",
         "about.opmode": "Betriebsmodus", "about.api": "API-Hook", "about.hub": "Hub-Version",
-        "about.author": "Autor", "about.sec_about": "\u00dcBER", "about.repo": "GitHub-Repository", "about.license": "Lizenz: GPL-3.0", "about.disclaimer": "Nicht mit Logitech verbunden. Alle Marken geh\u00f6ren ihren jeweiligen Eigent\u00fcmern.", "about.power_active": "{0} / Aktiv",
+        "about.author": "Autor", "about.sec_about": "ÜBER", "about.repo": "GitHub-Repository", "about.license": "Lizenz: GPL-3.0", "about.disclaimer": "Nicht mit Logitech verbunden. Alle Marken gehören ihren jeweiligen Eigentümern.", "about.power_active": "{0} / Aktiv",
         "about.power_standby": "Standby / Getrennt",
         "about.opmode_active": "Nativer Erweiterter Modus (Entsperrt)",
-        "about.opmode_idle": "Leerlauf / Warte auf Ger\u00e4t",
+        "about.opmode_idle": "Leerlauf / Warte auf Gerät",
         "about.tray": "In Infobereich minimieren",
         "about.tray_h": "Wenn aktiv, blendet die Minimieren-Taste die App in den Infobereich (ausgeblendete Symbole) aus.",
         "tray.show": "Anzeigen", "tray.quit": "Beenden",
         "apply.ok_title": "Angewendet", "apply.ok_body": "Einstellungen auf das Lenkrad angewendet.",
-        "ui.presets": "VOREINSTELLUNGEN", "ui.presets_sub": "Vor dem Spielstart ausw\u00e4hlen.",
-        "ui.add_profile": "+  Spielprofil hinzuf\u00fcgen", "ui.autoload": "Beim Verbinden automatisch laden",
+        "ui.presets": "VOREINSTELLUNGEN", "ui.presets_sub": "Vor dem Spielstart auswählen.",
+        "ui.add_profile": "+  Spielprofil hinzufügen", "ui.autoload": "Beim Verbinden automatisch laden",
         "ui.telemetry": "LIVE-TELEMETRIE", "ui.center": "Zentrieren",
         "ui.apply": "ANWENDEN", "conn.connected": "Verbunden", "conn.test": "Testmodus",
         "tab.wheel": "LENKRAD", "tab.ffb": "FFB-TEST", "tab.input": "EINGABE-MONITOR",
         "tab.lut": "LUT",
         "lut.sec": "FFB-NACHBEARBEITUNG", "lut.enable": "FFB-Nachbearbeitung aktivieren",
-        "lut.enable_h": "Leitet das Force Feedback des Spiels durch die gew\u00e4hlte LUT-Kurve in allen Spielen (\u00fcber den dinput8-Proxy).",
-        "lut.select": "LUT-Kurve", "lut.import": "LUT importieren", "lut.delete": "LUT l\u00f6schen", "lut.none": "(keine)",
-        "lut.del_title": "LUT l\u00f6schen", "lut.del_body": "LUT-Datei \u201c{}\u201d von der Festplatte l\u00f6schen? Das kann nicht r\u00fcckg\u00e4ngig gemacht werden.",
-        "lut.deleted": "LUT gel\u00f6scht",
-        "lut.empty": "Noch keine LUT-Dateien. Klicke auf \u201eLUT importieren\u201c.",
-        "lut.warn": "\u26a0  Nicht in Online-Spielen verwenden. Wenn doch, auf eigenes Risiko!",
-        "lut.global_notice": "LUT wird pro Spiel festgelegt. Erstelle ein Spielprofil (\uff0b in Presets), w\u00e4hle seine .exe und dann hier seine LUT. Das Global-Profil wendet keine LUT an.",
+        "lut.enable_h": "Leitet das Force Feedback des Spiels durch die gewählte LUT-Kurve in allen Spielen (über den dinput8-Proxy).",
+        "lut.select": "LUT-Kurve", "lut.import": "LUT importieren", "lut.delete": "LUT löschen", "lut.none": "(keine)",
+        "lut.del_title": "LUT löschen", "lut.del_body": "LUT-Datei “{}” von der Festplatte löschen? Das kann nicht rückgängig gemacht werden.",
+        "lut.deleted": "LUT gelöscht",
+        "lut.empty": "Noch keine LUT-Dateien. Klicke auf „LUT importieren“.",
+        "lut.warn": "⚠  Nicht in Online-Spielen verwenden. Wenn doch, auf eigenes Risiko!",
+        "lut.global_notice": "LUT wird pro Spiel festgelegt. Erstelle ein Spielprofil (＋ in Presets), wähle seine .exe und dann hier seine LUT. Das Global-Profil wendet keine LUT an.",
         "lut.axis_in": "Eingang", "lut.axis_out": "Ausgang",
         "lut.imported": "LUT importiert", "lut.import_fail": "LUT konnte nicht importiert werden",
-        "lut.game": "SPIEL", "lut.exe": "Spiel-Datei", "lut.exe_pick": "W\u00e4hlen\u2026",
-        "lut.exe_none": "Kein Spiel gew\u00e4hlt",
+        "lut.game": "SPIEL", "lut.exe": "Spiel-Datei", "lut.exe_pick": "Wählen…",
+        "lut.exe_none": "Kein Spiel gewählt",
         "prof.edit": "Profil bearbeiten", "prof.exe": "Spiel-Datei",
-        "prof.exe_hint": "Bei UE-Launcher-Spielen die echte ...-Shipping.exe w\u00e4hlen, falls nicht automatisch gefunden.",
-        "prof.logo": "Symbol (aus einer .exe)", "prof.logo_pick": "Symbol w\u00e4hlen\u2026",
-        "prof.exe_pick": "Spiel w\u00e4hlen\u2026", "prof.name_lbl": "Profilname",
+        "prof.exe_hint": "Bei UE-Launcher-Spielen die echte ...-Shipping.exe wählen, falls nicht automatisch gefunden.",
+        "prof.logo": "Symbol (aus einer .exe)", "prof.logo_pick": "Symbol wählen…",
+        "prof.exe_pick": "Spiel wählen…", "prof.name_lbl": "Profilname",
         "proxy.installed": "Proxy installiert", "proxy.removed": "Proxy entfernt",
         "proxy.installed_body": "dinput8.dll neben dem Spiel platziert.",
-        "proxy.locked": "Proxy deaktiviert", "proxy.locked_body": "Wird beim Schlie\u00dfen des Spiels entfernt.",
+        "proxy.locked": "Proxy deaktiviert", "proxy.locked_body": "Wird beim Schließen des Spiels entfernt.",
         "proxy.removed": "Proxy entfernt", "proxy.removed_body": "dinput8.dll aus dem Spielordner entfernt.",
-        "proxy.err_noexe": "Spiel-Exe nicht gefunden.", "proxy.err_arch": "Nicht unterst\u00fctzte Architektur.",
-        "proxy.err_asset": "Geb\u00fcndelte Proxy-DLL fehlt (assets/proxy).",
-        "proxy.err_write": "DLL konnte nicht geschrieben werden (l\u00e4uft das Spiel? Ordner beschreibbar?).",
+        "proxy.err_noexe": "Spiel-Exe nicht gefunden.", "proxy.err_arch": "Nicht unterstützte Architektur.",
+        "proxy.err_asset": "Gebündelte Proxy-DLL fehlt (assets/proxy).",
+        "proxy.err_write": "DLL konnte nicht geschrieben werden (läuft das Spiel? Ordner beschreibbar?).",
         "proxy.foreign_title": "Vorhandene dinput8.dll",
-        "proxy.foreign_body": "In diesem Ordner liegt bereits eine nicht von LWH installierte dinput8.dll (anderer Mod/Wrapper). \u00dcberschreiben?",
+        "proxy.foreign_body": "In diesem Ordner liegt bereits eine nicht von LWH installierte dinput8.dll (anderer Mod/Wrapper). Überschreiben?",
         "tab.info": "INFO", "wheel.sec_ffb": "FORCE FEEDBACK", "wheel.sec_steer": "LENKEINSTELLUNGEN",
-        "ffb.reset": "Treiber-FFB zur\u00fccksetzen", "ffb.reset_h": "L\u00f6scht alle von dieser App geschriebenen FFB-Registry-Werte.",
+        "ffb.reset": "Treiber-FFB zurücksetzen", "ffb.reset_h": "Löscht alle von dieser App geschriebenen FFB-Registry-Werte.",
         "set.title": "EINSTELLUNGEN", "set.appearance": "DARSTELLUNG", "set.general": "ALLGEMEIN", "set.testing": "TEST",
         "set.theme": "Design", "set.language": "Sprache", "set.tray": "In den Infobereich minimieren",
         "set.tray_h": "Wenn aktiv, blendet die Minimieren-Taste die App in den Infobereich (ausgeblendete Symbole) aus.",
-        "set.devmode": "Ger\u00e4teerkennungsmodus",
-        "set.devmode_h": "Layout ohne Hardware erzwingen. \u201eAuto\u201c nutzt echte Erkennung.", "set.ui_scale": "Oberfl\u00e4chenskalierung", "set.ui_scale_h": "Vergr\u00f6\u00dfert die gesamte Oberfl\u00e4che auf hochaufl\u00f6senden (1440p/4K) Bildschirmen. Wird nach einem Neustart der App wirksam.", "set.restart_hint": "Starten Sie die App neu, um die neue Skalierung anzuwenden.",
+        "set.devmode": "Geräteerkennungsmodus",
+        "set.devmode_h": "Layout ohne Hardware erzwingen. „Auto“ nutzt echte Erkennung.", "set.ui_scale": "Oberflächenskalierung", "set.ui_scale_h": "Vergrößert die gesamte Oberfläche auf hochauflösenden (1440p/4K) Bildschirmen. Wird nach einem Neustart der App wirksam.", "set.restart_hint": "Starten Sie die App neu, um die neue Skalierung anzuwenden.",
         "info.opmode_active": "Nativer Erweiterter Modus (Entsperrt)", "info.opmode_idle": "Leerlauf / Getrennt",
         "info.active": "Aktiv", "info.standby": "Standby",
     },
@@ -1630,10 +1630,12 @@ def hub_qss():
     bg = PANEL_BG_DARK if isDarkTheme() else PANEL_BG_LIGHT
     hdr = HEADER_BG_DARK if isDarkTheme() else HEADER_BG_LIGHT
     sep = SEP_DARK if isDarkTheme() else SEP_LIGHT
+    muted = "#8a93a6" if isDarkTheme() else "#5c6370"
     return f"""
     #ControlHub {{ background-color: {bg}; }}
     #Header {{ background-color: {hdr}; border-bottom: 1px solid {sep}; }}
     #vsep, #hsep {{ background-color: {sep}; border: none; }}
+    #secHeaderLbl, #colHeaderLbl {{ color: {muted}; }}
     #applyBtn {{
         background-color: {ACCENT}; color: #14110c; border: none;
         border-radius: 5px; font-weight: 700; font-size: 13px;
@@ -1662,8 +1664,9 @@ def section_header(text):
     bar = QFrame(); bar.setFixedSize(3, 14)
     bar.setStyleSheet(f"background:{ACCENT}; border-radius:1px;")
     lbl = CaptionLabel(text)
-    f = lbl.font(); f.setBold(True); f.setPointSize(9); lbl.setFont(f)
-    lbl.setStyleSheet("letter-spacing:1px;")
+    f = lbl.font(); f.setBold(True); f.setPointSize(9)
+    f.setLetterSpacing(QFont.AbsoluteSpacing, 1.0)
+    lbl.setFont(f)
     h.addWidget(bar); h.addWidget(lbl); h.addStretch(1)
     w._bar = bar; w._lbl = lbl
     return w
@@ -1676,8 +1679,9 @@ def column_header(text, button=None):
     bar = QFrame(); bar.setFixedSize(3, 16)
     bar.setStyleSheet(f"background:{ACCENT}; border-radius:1px;")
     lbl = StrongBodyLabel(text)
-    f = lbl.font(); f.setBold(True); f.setPointSize(10); lbl.setFont(f)
-    lbl.setStyleSheet("letter-spacing:1px;")
+    f = lbl.font(); f.setBold(True); f.setPointSize(10)
+    f.setLetterSpacing(QFont.AbsoluteSpacing, 1.0)
+    lbl.setFont(f)
     h.addWidget(bar); h.addWidget(lbl); h.addStretch(1)
     if button is not None:
         h.addWidget(button)
@@ -1798,12 +1802,22 @@ class PresetItem(QWidget):
 
     def set_selected(self, s):
         self.selected = s
+        
+        f = self.lbl.font()
+        family = f.family()
+        size = f.pointSize()
+        size_str = f"{size}pt" if size > 0 else f"{f.pixelSize()}px"
+        
         if s:
-            f = self.lbl.font(); f.setBold(True); self.lbl.setFont(f)
-            self.lbl.setStyleSheet(f"color:{ACCENT};")
+            f.setBold(True)
+            self.lbl.setFont(f)
+            self.lbl.setStyleSheet(f"color: {ACCENT}; font-family: '{family}'; font-size: {size_str}; font-weight: bold;")
         else:
-            f = self.lbl.font(); f.setBold(False); self.lbl.setFont(f)
-            self.lbl.setStyleSheet("")
+            f.setBold(False)
+            self.lbl.setFont(f)
+            text_color = "#ffffff" if isDarkTheme() else "#1b1b1b"
+            self.lbl.setStyleSheet(f"color: {text_color}; font-family: '{family}'; font-size: {size_str}; font-weight: normal;")
+            
         self._elide()                               # bold changes text width
         self.update()
 
@@ -2065,10 +2079,13 @@ class TelemetryPanel(QWidget):
         self.angle = TitleLabel("0\u00b0"); self.angle.setAlignment(Qt.AlignHCenter)
         fnt = self.angle.font(); fnt.setPointSize(36); fnt.setBold(True); self.angle.setFont(fnt)
         lay.addWidget(self.angle)
+        
         self.cap = CaptionLabel(tr("home.steering")); self.cap.setAlignment(Qt.AlignHCenter)
-        f = self.cap.font(); f.setBold(True); self.cap.setFont(f)
-        self.cap.setStyleSheet("letter-spacing:1px;")
+        f = self.cap.font(); f.setBold(True)
+        f.setLetterSpacing(QFont.AbsoluteSpacing, 1.0)
+        self.cap.setFont(f)
         lay.addWidget(self.cap, 0, Qt.AlignHCenter)
+        
         lay.addSpacing(10)
         self.steerbar = SteerBar()
         lay.addWidget(self.steerbar)
@@ -2712,7 +2729,7 @@ class InputMonitorTab(QWidget):
 class InfoTab(QWidget):
     def __init__(self):
         super().__init__()
-        self.vals = {}; self._bars = []
+        self.vals = {}; self._bars = []; self._labels = []
         outer = QVBoxLayout(self); outer.setContentsMargins(0, 0, 0, 0)
         scroll = QScrollArea(self); scroll.setWidgetResizable(True); scroll.setFrameShape(QFrame.NoFrame)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
@@ -2722,7 +2739,7 @@ class InfoTab(QWidget):
         lay = QVBoxLayout(host); lay.setContentsMargins(2, 6, 12, 8); lay.setSpacing(5)
         scroll.setWidget(host)
 
-        self._secs = []; self._labels = []
+        self._secs = []
         self._sec(lay, "about.sec_hw")
         self._row(lay, "about.devmodel", "model")
         self._row(lay, "about.hwid", "hwid")
@@ -2754,10 +2771,10 @@ class InfoTab(QWidget):
         self.link.setOpenExternalLinks(True)
         self.link.setTextInteractionFlags(Qt.TextBrowserInteraction)
         lay.addWidget(self.link)
-        self.lic = BodyLabel(tr("about.license")); self.lic.setStyleSheet("color:#8a93a6;")
+        self.lic = BodyLabel(tr("about.license"))
         lay.addWidget(self.lic)
         self.disc = CaptionLabel(tr("about.disclaimer"))
-        self.disc.setWordWrap(True); self.disc.setStyleSheet("color:#8a93a6;")
+        self.disc.setWordWrap(True)
         lay.addWidget(self.disc)
         self._refresh_link()
         lay.addStretch(1)
@@ -2775,7 +2792,7 @@ class InfoTab(QWidget):
 
     def _row(self, lay, key, field):
         row = QHBoxLayout(); row.setContentsMargins(14, 0, 4, 0)
-        lbl = BodyLabel(tr(key)); lbl.setStyleSheet("color:#8a93a6;"); lbl._key = key
+        lbl = BodyLabel(tr(key)); lbl._key = key
         val = StrongBodyLabel("-")
         row.addWidget(lbl); row.addStretch(1); row.addWidget(val)
         lay.addLayout(row)
@@ -2807,13 +2824,18 @@ class InfoTab(QWidget):
     def restyle(self):
         for b in self._bars:
             b.setStyleSheet(f"background:{ACCENT}; border-radius:1px;")
+        muted = "#8a93a6" if isDarkTheme() else "#5c6370"
+        for lbl in self._labels:
+            lbl.setStyleSheet(f"color:{muted};")
+        self.lic.setStyleSheet(f"color:{muted};")
+        self.disc.setStyleSheet(f"color:{muted};")
 
 
 class SettingsTab(QWidget):
     """Reachable via the gear icon to the right of the tab strip."""
     def __init__(self, hub):
         super().__init__()
-        self.hub = hub; self._bars = []; self._guard = False
+        self.hub = hub; self._bars = []; self._labels = []; self._guard = False
         outer = QVBoxLayout(self); outer.setContentsMargins(0, 0, 0, 0)
         scroll = QScrollArea(self); scroll.setWidgetResizable(True); scroll.setFrameShape(QFrame.NoFrame)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
@@ -2834,7 +2856,7 @@ class SettingsTab(QWidget):
         self.cb_tray.setChecked(bool(global_settings.get("minimize_to_tray", False)))
         self.cb_tray.stateChanged.connect(self._on_tray)
         lay.addWidget(self.cb_tray)
-        self.tray_hint = CaptionLabel(tr("set.tray_h")); self.tray_hint.setStyleSheet("color:#8a93a6;")
+        self.tray_hint = CaptionLabel(tr("set.tray_h"))
         self.tray_hint.setWordWrap(True); lay.addWidget(self.tray_hint)
         lay.addSpacing(10)
 
@@ -2855,7 +2877,7 @@ class SettingsTab(QWidget):
         self.combo_scale.setCurrentIndex(self._scale_vals.index(cur_scale))
         self.combo_scale.currentIndexChanged.connect(self._on_scale)
         self.row_scale = self._field(lay, "set.ui_scale", self.combo_scale)
-        self.scale_hint = CaptionLabel(tr("set.ui_scale_h")); self.scale_hint.setStyleSheet("color:#8a93a6;")
+        self.scale_hint = CaptionLabel(tr("set.ui_scale_h"))
         self.scale_hint.setWordWrap(True); lay.addWidget(self.scale_hint)
         lay.addSpacing(10)
 
@@ -2867,7 +2889,7 @@ class SettingsTab(QWidget):
         self.combo_test.setCurrentIndex({"DFGT": 1, "G27": 2}.get(test_override, 0))
         self.combo_test.currentIndexChanged.connect(self._on_test)
         self.row_test = self._field(lay, "set.devmode", self.combo_test)
-        self.test_hint = CaptionLabel(tr("set.devmode_h")); self.test_hint.setStyleSheet("color:#8a93a6;")
+        self.test_hint = CaptionLabel(tr("set.devmode_h"))
         self.test_hint.setWordWrap(True); lay.addWidget(self.test_hint)
         lay.addStretch(1)
 
@@ -2880,7 +2902,8 @@ class SettingsTab(QWidget):
 
     def _field(self, lay, key, ctrl):
         row = QHBoxLayout(); row.setContentsMargins(14, 0, 4, 0)
-        lbl = BodyLabel(tr(key)); lbl.setStyleSheet("color:#cfd4de;"); lbl._key = key
+        lbl = BodyLabel(tr(key)); lbl._key = key
+        self._labels.append(lbl)
         row.addWidget(lbl); row.addStretch(1); row.addWidget(ctrl)
         lay.addLayout(row)
         return lbl
@@ -2929,6 +2952,13 @@ class SettingsTab(QWidget):
     def restyle(self):
         for b in self._bars:
             b.setStyleSheet(f"background:{ACCENT}; border-radius:1px;")
+        lbl_color = "#cfd4de" if isDarkTheme() else "#1b1b1b"
+        muted = "#8a93a6" if isDarkTheme() else "#5c6370"
+        for lbl in self._labels:
+            lbl.setStyleSheet(f"color:{lbl_color};")
+        self.tray_hint.setStyleSheet(f"color:{muted};")
+        self.scale_hint.setStyleSheet(f"color:{muted};")
+        self.test_hint.setStyleSheet(f"color:{muted};")
 
     def retranslate(self):
         self._guard = True
@@ -3085,7 +3115,7 @@ class CustomTitleBar(TitleBar):
         self.brand = StrongBodyLabel("Legacy Wheel Hub"); self.brand.setStyleSheet(f"color:{ACCENT};")
         bf = self.brand.font(); bf.setBold(True); bf.setPointSize(15); bf.setLetterSpacing(QFont.AbsoluteSpacing, 0.3)
         self.brand.setFont(bf)
-        self.device = CaptionLabel(""); self.device.setStyleSheet("color:#8a93a6;")
+        self.device = CaptionLabel("")
         df = self.device.font(); df.setPointSize(9); self.device.setFont(df)
         tcol.addStretch(1); tcol.addWidget(self.brand); tcol.addWidget(self.device); tcol.addStretch(1)
         lh.addWidget(self.logo, 0, Qt.AlignVCenter); lh.addLayout(tcol)
@@ -3117,6 +3147,8 @@ class CustomTitleBar(TitleBar):
         for b in (self.minBtn, self.maxBtn):
             b.setNormalColor(nc); b.setHoverColor(hc)
         self.closeBtn.setNormalColor(nc)
+        muted = "#8a93a6" if dark else "#5c6370"
+        self.device.setStyleSheet(f"color:{muted};")
 
     def set_status(self, text, color):
         self.status.setText(text); self.status.setStyleSheet(f"color:{color};")
