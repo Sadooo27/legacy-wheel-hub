@@ -106,13 +106,27 @@ def _lut_dir():
         return d
 
 
-def set_active_lut(path):
+def _proxy_game_key(exe_path):
+    """Registry-safe key for a game's exe path — MUST match the proxy DLL's
+    LwhGameKey() (proxy.h) exactly: same exe path in, same key out, so each
+    game's proxy only ever sees the value written for its own exe."""
+    real = (resolve_game_exe(exe_path) or exe_path or "").lower()
+    return "".join(c if c.isalnum() else "_" for c in real)
+
+
+def set_active_lut(path, exe_path=None):
     """Tell the dinput8 proxy which LUT to use (and where to log).
 
     The proxy DLL runs inside game processes and has no idea where LWH is
-    installed, so we publish the active LUT's absolute path and the log
-    directory in the registry (HKCU\\Software\\LegacyWheelHub). The DLL polls
-    these and hot-reloads. Pass path=None/"" to disable (passthrough).
+    installed, so we publish the active LUT's absolute path in the registry
+    (HKCU\\Software\\LegacyWheelHub). The DLL polls this and hot-reloads.
+    Pass path=None/"" to disable (passthrough).
+
+    Writing is scoped per game (under Games\\<exe-derived key>) whenever
+    exe_path is given: whichever LUT a DIFFERENT game's proxy is already
+    applying must never change just because the LWH window happens to be
+    showing another profile. exe_path=None still writes the legacy global
+    key too, for a proxy DLL that hasn't been reinstalled since the update.
     """
     if winreg is None:
         return
@@ -121,6 +135,12 @@ def set_active_lut(path):
         winreg.SetValueEx(key, "ActiveLut", 0, winreg.REG_SZ, path or "")
         winreg.SetValueEx(key, "LogDir", 0, winreg.REG_SZ, _lut_dir())
         winreg.CloseKey(key)
+        if exe_path:
+            gkey = winreg.CreateKey(winreg.HKEY_CURRENT_USER,
+                                    r"Software\LegacyWheelHub\Games\%s" % _proxy_game_key(exe_path))
+            winreg.SetValueEx(gkey, "ActiveLut", 0, winreg.REG_SZ, path or "")
+            winreg.SetValueEx(gkey, "LogDir", 0, winreg.REG_SZ, _lut_dir())
+            winreg.CloseKey(gkey)
     except Exception:
         pass
 
@@ -402,7 +422,7 @@ WHEEL_PNG = _find_wheel()
 SETTINGS_FILE = os.path.join(_data_dir(), "settings.json")
 STEER_CENTER = 8192
 ACCENT_FALLBACK = "#ff6a1a"
-HUB_VERSION = "v1.1.3"
+HUB_VERSION = "v1.1.4"
 AUTHOR = "Sadooo"
 
 
@@ -2421,14 +2441,28 @@ class LutTab(QWidget):
             self.empty_hint.setVisible(not getattr(self, "_files", []))
 
     def _publish(self):
-        """Push the active preset's LUT choice to the proxy via registry."""
+        """Push every profile's LUT choice to the proxy via registry.
+
+        Each game's proxy now reads a key scoped to its OWN exe (see
+        set_active_lut/_proxy_game_key), so this must publish every profile
+        that has an exe assigned — not just whichever one happens to be
+        selected in the LWH window. Otherwise switching which profile is
+        shown here would never update a different game's own key, and an
+        already-published game could be left stuck on a stale value.
+        """
+        for pp in global_settings["profiles"].values():
+            exe = pp.get("exe_path", "")
+            if not exe:
+                continue
+            fn = pp.get("lut_file", "")
+            on = bool(pp.get("lut_enabled", False))
+            set_active_lut(os.path.join(_lut_dir(), fn) if (on and fn) else "", exe)
+        # Legacy global key: mirror the profile actually shown right now, for
+        # any proxy DLL that hasn't been reinstalled since the per-game update.
         prof = self._cur_prof()
         fn = prof.get("lut_file", "")
         on = bool(prof.get("lut_enabled", False))
-        if on and fn:
-            set_active_lut(os.path.join(_lut_dir(), fn))
-        else:
-            set_active_lut("")
+        set_active_lut(os.path.join(_lut_dir(), fn) if (on and fn) else "")
 
     # ---- events ----
     def _on_enable(self, *_):

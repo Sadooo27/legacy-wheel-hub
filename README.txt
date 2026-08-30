@@ -1,5 +1,5 @@
 ==============================================================
-  Legacy Wheel Hub  v1.1.3
+  Legacy Wheel Hub  v1.1.4
   A free control panel for legacy Logitech force-feedback wheels
   (Driving Force GT and G27).
 ==============================================================
@@ -30,6 +30,11 @@ Legacy Wheel Hub and plug in your wheel.
 - CENTERING RAMP: controls how sharply the centering force builds up
   around center. Higher = tighter center, lower = softer. Default is 7.
   Same strength with a different ramp feels very different - try it.
+- Each game's LUT setting is now fully independent: whichever profile
+  happens to be shown on screen no longer affects a different game's
+  proxy. If you were using LUTs before this version, reinstall the
+  proxy DLL once per game (toggle "FFB post-processing" off and back
+  on, or re-add the profile) so it picks up this fix.
 
 -------------------------------------------------------------
  GLOBAL LUT (FFB post-processing)

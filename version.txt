@@ -2,8 +2,8 @@
 # show "Legacy Wheel Hub" instead of a generic/Python name.
 VSVersionInfo(
   ffi=FixedFileInfo(
-    filevers=(1, 1, 3, 0),
-    prodvers=(1, 1, 3, 0),
+    filevers=(1, 1, 4, 0),
+    prodvers=(1, 1, 4, 0),
     mask=0x3f,
     flags=0x0,
     OS=0x40004,
@@ -19,12 +19,12 @@ VSVersionInfo(
           [
             StringStruct('CompanyName', 'Sadooo'),
             StringStruct('FileDescription', 'Legacy Wheel Hub'),
-            StringStruct('FileVersion', '1.1.3.0'),
+            StringStruct('FileVersion', '1.1.4.0'),
             StringStruct('InternalName', 'LegacyWheelHub'),
             StringStruct('LegalCopyright', '(c) Sadooo. Licensed under GPL-3.0.'),
             StringStruct('OriginalFilename', 'LegacyWheelHub.exe'),
             StringStruct('ProductName', 'Legacy Wheel Hub'),
-            StringStruct('ProductVersion', '1.1.3.0')
+            StringStruct('ProductVersion', '1.1.4.0')
           ]
         )
       ]
