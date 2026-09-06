@@ -10,7 +10,6 @@ Replaces what Logitech Gaming Software used to do: rotation range, force
 feedback strength, spring and damper, per-game profiles, and a LUT curve in
 games that have no LUT of their own.
 
-![screenshot](wheel.png)
 
 ## Setup
 
