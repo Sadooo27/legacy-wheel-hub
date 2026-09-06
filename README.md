@@ -1,88 +1,64 @@
 # Legacy Wheel Hub
-[![Latest Release](https://img.shields.io/github/v/release/Sadooo27/legacy-wheel-hub)](../../releases/latest)
-[![Downloads](https://img.shields.io/github/downloads/Sadooo27/legacy-wheel-hub/total)](../../releases)
-[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
-![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078D6)
 
-A free control panel for **legacy Logitech force-feedback wheels** (Driving
-Force GT and G27) — a modern, open alternative to Logitech Gaming Software.
-Set your rotation range and force-feedback strength, remove the center FFB
-deadzone, apply a **custom LUT curve in any game**, test the motor, watch every
-button and axis live, and have your settings applied automatically the moment
-the wheel finishes calibrating.
+[![release](https://img.shields.io/github/v/release/Sadooo27/legacy-wheel-hub)](../../releases)
+[![downloads](https://img.shields.io/github/downloads/Sadooo27/legacy-wheel-hub/total)](../../releases)
+[![license](https://img.shields.io/badge/license-GPLv3-blue)](LICENSE)
+![platform](https://img.shields.io/badge/platform-Windows%2010%2F11-blue)
 
-<details>
-<summary><h2 style="display:inline">📷 Screenshots</h2></summary>
+Control panel for the Logitech Driving Force GT and G27 on Windows 10/11.
+Replaces what Logitech Gaming Software used to do: rotation range, force
+feedback strength, spring and damper, per-game profiles, and a LUT curve in
+games that have no LUT of their own.
 
-<br>
-<img width="1280" height="745" alt="image" src="https://github.com/user-attachments/assets/aca9db5e-80c0-4cc2-8346-2ea27a718e7b" />
-<img width="1280" height="745" alt="image" src="https://github.com/user-attachments/assets/5f304f2d-c7fe-47ee-8cd8-56e8d7d2bde4" />
-<img width="1280" height="745" alt="image" src="https://github.com/user-attachments/assets/8638a2f8-b46a-4e36-b441-009137f6df29" />
-<img width="1280" height="745" alt="image" src="https://github.com/user-attachments/assets/d91147e9-2b9b-4f09-ac45-ca7e878aee99" />
-<img width="1280" height="745" alt="image" src="https://github.com/user-attachments/assets/c15f308d-dc58-4898-b2ad-701f689af923" />
-</details>
+![screenshot](wheel.png)
 
-## 1) Install the wheel drivers first
-This app does **not** include any Logitech drivers. On Windows 10/11, install
-the community driver package first:
+## Setup
+
+Install the wheel drivers first. Nothing here ships Logitech drivers:
 
 > https://github.com/Mysli0210/Legacy-Logitech-wheels-for-W11
 
-Follow that project's steps, reboot if prompted, then continue below.
+Then grab `LegacyWheelHub_Setup.exe` from [Releases](../../releases). Plug the
+wheel in, set what you want, hit APPLY.
 
-## 2) Install Legacy Wheel Hub
-1. Download **`LegacyWheelHub_Setup.exe`** from the [Releases](../../releases) page.
-2. Run it and follow the installer.
-3. Plug in your wheel, open the app, choose your settings, and press **APPLY**.
+SmartScreen will warn about the installer being unsigned. More info → Run anyway.
 
-> Windows SmartScreen may warn because the installer is unsigned — click
-> **More info → Run anyway**.
+## What it does
 
-## Features
-- **Global LUT (FFB post-processing)** — import an Assetto-Corsa-style `.lut`
-  curve and apply it to *any* game, even titles without built-in LUT support,
-  for more linear force feedback on gear-driven wheels (see below)
-- **Per-game profiles** — each profile remembers its wheel settings, its game,
-  and its own LUT; selecting a profile applies everything instantly, and shows
-  the game's icon
-- Steering rotation range (40–900°) with quick presets
-- Live telemetry: rotating wheel, steering angle, pedals (clutch/brake/throttle)
-- Input Monitor: paddles, buttons, D-pad, face buttons, H-pattern shifter, LED test
-- FFB motor test bench (push / spring / sweep / pulse / vibration)
-- Auto-load on connect, system-tray minimize
-- Light/Dark theme, multi-language (EN / TR / DE)
+- Rotation range, 40–900°, with presets
+- Overall strength, spring, damper, centering spring, centering ramp
+- Profiles per game: settings, rotation and LUT all switch when the game starts
+- LUT support in games that don't have it
+- Telemetry and input monitor for checking buttons, axes and pedals
+- FFB test bench: push, spring, sweep, pulse, vibration
+- Auto-load on connect, start with Windows, tray minimize
+- EN / TR / DE, light and dark
 
-## Global LUT — how it works
-Gear-driven wheels like the G27/DFGT have a force-feedback "deadzone" near
-center: small forces don't move the wheel at all. A **LUT** (look-up table)
-remaps the game's force so even small inputs are felt, giving a more linear
-response.
+Settings go to `%APPDATA%\Legacy Wheel Hub\settings.json`.
 
-Some sims (Assetto Corsa, ACC, iRacing) apply a LUT themselves. Legacy Wheel
-Hub adds LUT support to games that **don't** have it:
+## LUT
 
-1. Open the **LUT** tab and click **Import LUT** to add a `.lut` file (you can
-   generate one for your wheel with WheelCheck + LUT Generator). Keep several
-   and pick a different one per profile.
-2. Tick **Enable FFB post-processing**.
-3. Edit or create a profile and choose the game. Legacy Wheel Hub handles the
-   rest automatically so the game's force feedback runs through your LUT.
+Gear-driven wheels lose small forces to friction, so the wheel feels dead
+around center. A LUT remaps the game's output to compensate.
 
-Do **not** apply a LUT in sims that already have their own (AC, ACC, iRacing) —
-that would double up the curve.
+Import a `.lut` in the LUT tab, tick Enable FFB post-processing, and assign
+the game in the profile. Build your own curve with WheelCheck + LUT Generator,
+or reuse one per profile.
 
-> ⚠ **Online games:** Do not use the LUT in online games. Some anti-cheat
-> systems may flag it. If you use it online, it's **at your own risk!**
+Skip this in Assetto Corsa, ACC and iRacing. They already apply their own LUT
+and you'd get the curve twice.
 
-Your settings are stored per-user at `%APPDATA%\Legacy Wheel Hub\settings.json`.
+**Online games:** this drops a `dinput8.dll` next to the game executable.
+Anti-cheat may not like that. Your call, your risk.
 
 ## License
-Released under the **GNU General Public License v3.0 (GPL-3.0)**. Full text at
+
+GPL-3.0, because PySide6-Fluent-Widgets is. Full text in `LICENSE`, or
 https://www.gnu.org/licenses/gpl-3.0.txt
 
 ## Disclaimer
-Not affiliated with, endorsed by, or sponsored by Logitech. "Logitech",
-"Driving Force" and "G27" are trademarks of Logitech, used here only to
-indicate hardware compatibility. The app talks to the wheel via standard USB
-HID and Logitech driver registry settings for interoperability; no Logitech
-software or files are included or distributed. Use at your own risk.
+
+Not affiliated with Logitech. "Logitech", "Driving Force" and "G27" are their
+trademarks, used here to say what hardware this works with. Talks to the wheel
+over USB HID and the driver's own registry settings. No Logitech code or files
+are redistributed. Use at your own risk.
