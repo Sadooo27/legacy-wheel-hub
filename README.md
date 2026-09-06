@@ -10,7 +10,6 @@ Replaces what Logitech Gaming Software used to do: rotation range, force
 feedback strength, spring and damper, per-game profiles, and a LUT curve in
 games that have no LUT of their own.
 
-
 ## Setup
 
 Install the wheel drivers first. Nothing here ships Logitech drivers:
