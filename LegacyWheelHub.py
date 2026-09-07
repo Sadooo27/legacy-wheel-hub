@@ -1,12 +1,64 @@
 """
-Legacy Logitech Wheels - Control Hub  (PySide6 + QFluentWidgets edition)
+Legacy Wheel Hub - control panel for the Logitech Driving Force GT and G27.
+
+Copyright (C) 2026 Sadooo
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later
+version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT
+ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License along with
+this program. If not, see <https://www.gnu.org/licenses/>.
 """
-import sys, os, json, math, time, threading, struct
+import sys, os, json, math, time, threading, struct, copy
 
 try:
     import hid
 except ImportError:
     print("ERROR: hidapi is not installed  ->  pip install hidapi"); sys.exit(1)
+
+# Two different packages install as "hid" and they are not compatible:
+# cython-hidapi (what this app is written against) exposes hid.device() with
+# open_path(), while the "hid" package exposes hid.Device(path=...). Installing
+# the wrong one leaves a module that imports fine and then fails at the first
+# open, so adapt rather than demand a particular package.
+if not hasattr(hid, "device") and hasattr(hid, "Device"):
+    class _HidCompat:
+        """hid.device() shape on top of the other package's hid.Device."""
+
+        def __init__(self):
+            self._d = None
+
+        def open(self, vid, pid):
+            self._d = hid.Device(vid, pid)
+
+        def open_path(self, path):
+            self._d = hid.Device(path=path)
+
+        def write(self, data):
+            # cython-hidapi takes a list of ints, the other wants bytes.
+            return self._d.write(bytes(data))
+
+        def read(self, size, timeout_ms=0):
+            return list(self._d.read(size, timeout_ms or 0))
+
+        def set_nonblocking(self, on):
+            try:
+                self._d.nonblocking = bool(on)
+            except Exception:
+                pass
+
+        def close(self):
+            if self._d is not None:
+                self._d.close()
+                self._d = None
+
+    hid.device = _HidCompat
 
 try:
     import winreg
@@ -106,6 +158,144 @@ def _lut_dir():
         return d
 
 
+def running_exe_paths():
+    """{lowercased full exe path: process start time} for visible processes.
+
+    PROCESS_QUERY_LIMITED_INFORMATION is used on purpose: it is enough to read
+    a process's image path and start time, and unlike QUERY_INFORMATION it
+    does not need admin rights for same-user processes. Anything we cannot
+    open (elevated or protected processes) is simply skipped - a game we can't
+    see is no worse than one that isn't running.
+    """
+    if sys.platform != "win32":
+        return {}
+    try:
+        import ctypes
+        from ctypes import wintypes
+        psapi = ctypes.WinDLL("psapi", use_last_error=True)
+        k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+
+        count = 1024
+        while True:
+            arr = (wintypes.DWORD * count)()
+            need = wintypes.DWORD()
+            if not psapi.EnumProcesses(ctypes.byref(arr), ctypes.sizeof(arr), ctypes.byref(need)):
+                return {}
+            if need.value < ctypes.sizeof(arr):
+                break
+            count *= 2                      # buffer was full: there may be more
+        pids = arr[:need.value // ctypes.sizeof(wintypes.DWORD)]
+
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        out = {}
+        buf = ctypes.create_unicode_buffer(32768)
+        for pid in pids:
+            if not pid:
+                continue
+            h = k32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+            if not h:
+                continue
+            try:
+                size = wintypes.DWORD(len(buf))
+                if not k32.QueryFullProcessImageNameW(h, 0, buf, ctypes.byref(size)):
+                    continue
+                path = buf.value
+                created = wintypes.FILETIME()
+                dummy = wintypes.FILETIME()
+                started = 0
+                if k32.GetProcessTimes(h, ctypes.byref(created), ctypes.byref(dummy),
+                                       ctypes.byref(dummy), ctypes.byref(dummy)):
+                    started = (created.dwHighDateTime << 32) | created.dwLowDateTime
+                # Keep the most recently started instance of a given exe.
+                key = path.lower()
+                if started >= out.get(key, -1):
+                    out[key] = started
+            finally:
+                k32.CloseHandle(h)
+        return out
+    except Exception:
+        return {}
+
+
+def match_running_profile(profiles, running=None):
+    """Name of the profile whose game is running, or None.
+
+    When several match (a launcher left open, two sims running), the most
+    recently started one wins - that is the one the user just switched to.
+    """
+    running = running_exe_paths() if running is None else running
+    if not running:
+        return None
+    best, best_t = None, -1
+    for name, prof in list(profiles.items()):
+        exe = (prof or {}).get("exe_path", "")
+        if not exe:
+            continue
+        # Exact path match only, normalised for separator and case. Matching
+        # on the file name alone was tried and dropped: plenty of games ship a
+        # generic "launcher.exe"/"game.exe", so an unrelated program could
+        # silently swap the user's wheel profile. Applying the WRONG profile is
+        # worse than applying none, and the exe path comes from the user's own
+        # file picker, so it matches what actually runs.
+        target = (resolve_game_exe(exe) or exe).replace("/", "\\").lower()
+        t = running.get(target)
+        if t is not None and t > best_t:
+            best, best_t = name, t
+    return best
+
+
+RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
+RUN_VALUE = "LegacyWheelHub"
+
+
+def _startup_command():
+    """Command Windows should run at logon, quoted for paths with spaces.
+
+    Frozen builds point at the exe. Running from source we launch pythonw so
+    no console window appears; registering bare sys.executable would start a
+    Python prompt instead of the app.
+    """
+    # --tray marks a logon launch. Coming up as a full window every time you
+    # sign in is intrusive for something that just sits there configuring a
+    # wheel, so a logon start goes to the tray when the user has enabled it.
+    if getattr(sys, "frozen", False):
+        return '"%s" --tray' % sys.executable
+    py = sys.executable
+    pyw = os.path.join(os.path.dirname(py), "pythonw.exe")
+    return '"%s" "%s" --tray' % (pyw if os.path.isfile(pyw) else py,
+                                 os.path.abspath(__file__))
+
+
+def startup_enabled():
+    if winreg is None:
+        return False
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY) as k:
+            return bool(winreg.QueryValueEx(k, RUN_VALUE)[0])
+    except Exception:
+        return False
+
+
+def set_startup(enable):
+    """Add/remove the logon entry. HKCU, so no admin rights are needed."""
+    if winreg is None:
+        return False
+    try:
+        if enable:
+            with winreg.CreateKey(winreg.HKEY_CURRENT_USER, RUN_KEY) as k:
+                winreg.SetValueEx(k, RUN_VALUE, 0, winreg.REG_SZ, _startup_command())
+        else:
+            try:
+                with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0,
+                                    winreg.KEY_SET_VALUE) as k:
+                    winreg.DeleteValue(k, RUN_VALUE)
+            except FileNotFoundError:
+                pass            # already absent - nothing to undo
+        return True
+    except Exception:
+        return False
+
+
 def _proxy_game_key(exe_path):
     """Registry-safe key for a game's exe path — MUST match the proxy DLL's
     LwhGameKey() (proxy.h) exactly: same exe path in, same key out, so each
@@ -131,16 +321,20 @@ def set_active_lut(path, exe_path=None):
     if winreg is None:
         return
     try:
-        key = winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\LegacyWheelHub")
-        winreg.SetValueEx(key, "ActiveLut", 0, winreg.REG_SZ, path or "")
-        winreg.SetValueEx(key, "LogDir", 0, winreg.REG_SZ, _lut_dir())
-        winreg.CloseKey(key)
         if exe_path:
+            # Per-game only. Writing the shared legacy key here as well would
+            # let each profile in _publish()'s loop overwrite it in turn, so a
+            # proxy polling mid-loop could momentarily read another game's LUT.
             gkey = winreg.CreateKey(winreg.HKEY_CURRENT_USER,
                                     r"Software\LegacyWheelHub\Games\%s" % _proxy_game_key(exe_path))
             winreg.SetValueEx(gkey, "ActiveLut", 0, winreg.REG_SZ, path or "")
             winreg.SetValueEx(gkey, "LogDir", 0, winreg.REG_SZ, _lut_dir())
             winreg.CloseKey(gkey)
+        else:
+            key = winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\LegacyWheelHub")
+            winreg.SetValueEx(key, "ActiveLut", 0, winreg.REG_SZ, path or "")
+            winreg.SetValueEx(key, "LogDir", 0, winreg.REG_SZ, _lut_dir())
+            winreg.CloseKey(key)
     except Exception:
         pass
 
@@ -422,7 +616,7 @@ WHEEL_PNG = _find_wheel()
 SETTINGS_FILE = os.path.join(_data_dir(), "settings.json")
 STEER_CENTER = 8192
 ACCENT_FALLBACK = "#ff6a1a"
-HUB_VERSION = "v1.1.4"
+HUB_VERSION = "v1.1.5"
 AUTHOR = "Sadooo"
 
 
@@ -489,6 +683,16 @@ LANG = {
         "prof.del": "Delete profile", "prof.new_title": "New Profile",
         "prof.new_hint": "Profile name", "prof.ren_title": "Rename Profile",
         "prof.del_title": "Delete Profile", "prof.del_msg": "Delete profile \u201c{0}\u201d? This cannot be undone.",
+        "ffb.reset_ok": "Driver FFB reset", "ffb.reset_ok_body": "All app-written FFB registry values were removed.",
+        "prof.name_taken": "Name already in use", "prof.name_taken_body": "A profile named \u201c{0}\u201d already exists, so the name was left unchanged.",
+        "input.mode_numbers": "Show button numbers", "input.mode_names": "Show button names",
+        "ui.autogame": "Auto-switch by game", "ui.autogame_h": "Applies the profile whose game .exe is running. Falls back to Global when none is.", "game.detected": "Game detected", "game.detected_body": "{0} preset applied.",
+        "set.startup": "Start with Windows", "set.startup_h": "Launches the app when you sign in. Off by default.",
+        "set.updates_sec": "UPDATES", "set.updates": "Check for updates on startup", "set.updates_h": "Checks GitHub once a day. Nothing is installed automatically.",
+        "set.check_now": "Check now", "set.checking": "Checking\u2026",
+        "upd.available": "Update available", "upd.available_body": "Version {0} is available.", "upd.open": "Download",
+        "upd.current": "Up to date", "upd.current_body": "You are running the latest release.",
+        "upd.failed": "Update check failed", "upd.failed_body": "Could not reach GitHub. Check your connection and try again.",
         "prof.copy_suffix": " Copy", "dlg.ok": "OK", "dlg.cancel": "Cancel", "dlg.delete": "Delete",
         "wheel.title": "Wheel Settings", "wheel.ffb": "Force Feedback",
         "wheel.overall": "Overall Effects Strength",
@@ -594,6 +798,16 @@ LANG = {
         "prof.del": "Profili sil", "prof.new_title": "Yeni Profil",
         "prof.new_hint": "Profil adı", "prof.ren_title": "Profili Yeniden Adlandır",
         "prof.del_title": "Profili Sil", "prof.del_msg": "“{0}” profili silinsin mi? Bu işlem geri alınamaz.",
+        "ffb.reset_ok": "Sürücü FFB sıfırlandı", "ffb.reset_ok_body": "Uygulamanın yazdığı tüm FFB kayıt defteri değerleri kaldırıldı.",
+        "prof.name_taken": "Bu isim kullanımda", "prof.name_taken_body": "“{0}” adlı bir profil zaten var, isim değiştirilmedi.",
+        "input.mode_numbers": "Buton numaralarını göster", "input.mode_names": "Buton adlarını göster",
+        "ui.autogame": "Oyuna göre geç", "ui.autogame_h": "Çalışan oyunun .exe dosyasına ait profili uygular. Hiçbiri çalışmıyorsa Global'e döner.", "game.detected": "Oyun algılandı", "game.detected_body": "{0} preseti uygulandı.",
+        "set.startup": "Windows ile başlat", "set.startup_h": "Oturum açtığınızda uygulamayı başlatır. Varsayılan olarak kapalıdır.",
+        "set.updates_sec": "GÜNCELLEMELER", "set.updates": "Açılışta güncellemeleri denetle", "set.updates_h": "Günde bir kez GitHub'ı denetler. Hiçbir şey otomatik kurulmaz.",
+        "set.check_now": "Şimdi denetle", "set.checking": "Denetleniyor\u2026",
+        "upd.available": "Güncelleme mevcut", "upd.available_body": "{0} sürümü mevcut.", "upd.open": "İndir",
+        "upd.current": "Güncel", "upd.current_body": "En son sürümü kullanıyorsunuz.",
+        "upd.failed": "Denetim başarısız", "upd.failed_body": "GitHub'a ulaşılamadı. Bağlantınızı kontrol edip tekrar deneyin.",
         "prof.copy_suffix": " Kopya", "dlg.ok": "Tamam", "dlg.cancel": "İptal", "dlg.delete": "Sil",
         "wheel.title": "Direksiyon Ayarları", "wheel.ffb": "Kuvvet Geri Bildirimi",
         "wheel.overall": "Genel Efekt Gücü",
@@ -646,7 +860,7 @@ LANG = {
         "tray.show": "Göster", "tray.quit": "Çıkış",
         "apply.ok_title": "Uygulandı", "apply.ok_body": "Ayarlar direksiyona uygulandı.",
         "ui.presets": "HAZIR AYARLAR", "ui.presets_sub": "Oyuna başlamadan önce seçin.",
-        "ui.add_profile": "+  Oyun Profili Ekle", "ui.autoload": "Bağlanınca otomatik yükle",
+        "ui.add_profile": "+  Oyun Profili Ekle", "ui.autoload": "Bağlanınca yükle",
         "ui.telemetry": "CANLI TELEMETRİ", "ui.center": "Merkezle",
         "ui.apply": "UYGULA", "conn.connected": "Bağlı", "conn.test": "Test Modu",
         "tab.lut": "LUT",
@@ -699,6 +913,16 @@ LANG = {
         "prof.del": "Profil löschen", "prof.new_title": "Neues Profil",
         "prof.new_hint": "Profilname", "prof.ren_title": "Profil umbenennen",
         "prof.del_title": "Profil löschen", "prof.del_msg": "Profil „{0}“ löschen? Dies kann nicht rückgängig gemacht werden.",
+        "ffb.reset_ok": "Treiber-FFB zurückgesetzt", "ffb.reset_ok_body": "Alle von der App geschriebenen FFB-Registry-Werte wurden entfernt.",
+        "prof.name_taken": "Name bereits vergeben", "prof.name_taken_body": "Ein Profil namens „{0}“ existiert bereits, der Name wurde nicht geändert.",
+        "input.mode_numbers": "Tastennummern anzeigen", "input.mode_names": "Tastennamen anzeigen",
+        "ui.autogame": "Auto-Wechsel je Spiel", "ui.autogame_h": "Wendet das Profil an, dessen Spiel-EXE läuft. Ohne laufendes Spiel gilt Global.", "game.detected": "Spiel erkannt", "game.detected_body": "Voreinstellung {0} angewendet.",
+        "set.startup": "Mit Windows starten", "set.startup_h": "Startet die App bei der Anmeldung. Standardmäßig aus.",
+        "set.updates_sec": "UPDATES", "set.updates": "Beim Start nach Updates suchen", "set.updates_h": "Prüft einmal täglich auf GitHub. Es wird nichts automatisch installiert.",
+        "set.check_now": "Jetzt prüfen", "set.checking": "Wird geprüft\u2026",
+        "upd.available": "Update verfügbar", "upd.available_body": "Version {0} ist verfügbar.", "upd.open": "Herunterladen",
+        "upd.current": "Aktuell", "upd.current_body": "Du verwendest die neueste Version.",
+        "upd.failed": "Prüfung fehlgeschlagen", "upd.failed_body": "GitHub war nicht erreichbar. Prüfe deine Verbindung und versuche es erneut.",
         "prof.copy_suffix": " Kopie", "dlg.ok": "OK", "dlg.cancel": "Abbrechen", "dlg.delete": "Löschen",
         "wheel.title": "Lenkrad-Einstellungen", "wheel.ffb": "Force Feedback",
         "wheel.overall": "Gesamtstärke der Effekte",
@@ -751,7 +975,7 @@ LANG = {
         "tray.show": "Anzeigen", "tray.quit": "Beenden",
         "apply.ok_title": "Angewendet", "apply.ok_body": "Einstellungen auf das Lenkrad angewendet.",
         "ui.presets": "VOREINSTELLUNGEN", "ui.presets_sub": "Vor dem Spielstart auswählen.",
-        "ui.add_profile": "+  Spielprofil hinzufügen", "ui.autoload": "Beim Verbinden automatisch laden",
+        "ui.add_profile": "+  Spielprofil hinzufügen", "ui.autoload": "Beim Verbinden laden",
         "ui.telemetry": "LIVE-TELEMETRIE", "ui.center": "Zentrieren",
         "ui.apply": "ANWENDEN", "conn.connected": "Verbunden", "conn.test": "Testmodus",
         "tab.wheel": "LENKRAD", "tab.ffb": "FFB-TEST", "tab.input": "EINGABE-MONITOR",
@@ -807,7 +1031,7 @@ dev = None
 dev_lock = threading.Lock()
 running = True
 active_profile = DEVICE_PROFILES["DFGT"]
-test_override = None
+test_override = None       # set from settings once they are loaded
 main_window = None
 
 
@@ -826,9 +1050,28 @@ def _active_ramp():
         return DEFAULT_RAMP
 
 
+def _system_language():
+    """Windows UI language, if we ship that language - else English.
+
+    Only consulted on first run: once the user has a settings file their own
+    choice wins, including an explicit switch back to English. QLocale is used
+    rather than the locale module because it reports the UI language, not the
+    number/date formatting region (a Turkish user on an English Windows should
+    get English, and vice-versa).
+    """
+    try:
+        from PySide6.QtCore import QLocale
+        code = QLocale.system().name().split("_")[0].lower()
+        if code in LANG:
+            return code
+    except Exception:
+        pass
+    return "en"
+
+
 def load_settings():
-    base = {"theme": "dark", "language": "en", "last_device": None, "auto_load": False,
-            "minimize_to_tray": False, "win_w": 1366, "win_h": 720, "last_tab": "wheel", "ui_scale": 100,
+    base = {"theme": "dark", "language": _system_language(), "last_device": None, "auto_load": False,
+            "minimize_to_tray": False, "check_updates": True, "auto_game_profile": True, "last_update_check": 0, "update_seen": "", "button_numbers": False, "test_device": None, "win_w": 1366, "win_h": 720, "last_tab": "wheel", "ui_scale": 100,
             "profiles": {"Global": dict(PROFILE_DEFAULTS)},
             "selected_profile": "Global"}
     try:
@@ -856,12 +1099,171 @@ if CURRENT_LANG not in LANG:
     CURRENT_LANG = "en"
 
 
-def save_settings():
+REPO_URL = "https://github.com/Sadooo27/legacy-wheel-hub"
+RELEASES_API = "https://api.github.com/repos/Sadooo27/legacy-wheel-hub/releases/latest"
+
+
+def open_releases_page():
+    """Open the GitHub releases page in the user's browser."""
     try:
-        with open(SETTINGS_FILE, "w") as f:
-            json.dump(global_settings, f, indent=2)
+        from PySide6.QtCore import QUrl
+        from PySide6.QtGui import QDesktopServices
+        QDesktopServices.openUrl(QUrl(REPO_URL + "/releases/latest"))
     except Exception:
-        pass
+        try:
+            import webbrowser
+            webbrowser.open(REPO_URL + "/releases/latest")
+        except Exception:
+            pass
+
+
+def _ver_tuple(v):
+    """'v1.1.4' -> (1, 1, 4). Unparsable parts become 0 so a malformed tag
+    can never look newer than a real version."""
+    nums = []
+    for part in str(v).lstrip("vV").split("."):
+        digits = "".join(c for c in part if c.isdigit())
+        nums.append(int(digits) if digits else 0)
+    while len(nums) < 3:
+        nums.append(0)
+    return tuple(nums[:3])
+
+
+RELEASES_FEED = REPO_URL + "/releases.atom"
+
+
+def _url_open(url, timeout):
+    """Open a URL, resolving IPv4 first.
+
+    Python asks for A and AAAA records together and waits for both. On a
+    network with no working IPv6 the AAAA query just times out - measured at
+    ~12 s here, which is the entire cost of an update check that should take
+    a fraction of a second. Browsers hide this by racing both families
+    (Happy Eyeballs); urllib does not.
+
+    So: force IPv4, and fall back to the default resolver if that finds
+    nothing, which keeps genuinely IPv6-only networks working.
+    """
+    import http.client
+    import socket
+    import urllib.request
+
+    class _V4Connection(http.client.HTTPSConnection):
+        def connect(self):
+            infos = socket.getaddrinfo(self.host, self.port,
+                                       socket.AF_INET, socket.SOCK_STREAM)
+            last = None
+            for af, kind, proto, _c, addr in infos:
+                sock = socket.socket(af, kind, proto)
+                try:
+                    if self.timeout is not None:
+                        sock.settimeout(self.timeout)
+                    sock.connect(addr)
+                    self.sock = sock
+                    break
+                except OSError as e:
+                    sock.close()
+                    last = e
+            else:
+                raise last or OSError("no IPv4 address for %s" % self.host)
+            self.sock = self._context.wrap_socket(self.sock, server_hostname=self.host)
+
+    class _V4Handler(urllib.request.HTTPSHandler):
+        def https_open(self, req):
+            return self.do_open(_V4Connection, req)
+
+    req = urllib.request.Request(url, headers={
+        "User-Agent": "LegacyWheelHub/%s" % HUB_VERSION,
+        "Accept": "application/vnd.github+json, application/atom+xml, */*"})
+    try:
+        return urllib.request.build_opener(_V4Handler()).open(req, timeout=timeout)
+    except Exception:
+        return urllib.request.urlopen(req, timeout=timeout)
+
+
+def _fetch_tag_from_api(timeout):
+    with _url_open(RELEASES_API, timeout) as r:
+        return json.loads(r.read().decode("utf-8")).get("tag_name")
+
+
+def _fetch_tag_from_feed(timeout):
+    """Read the newest tag from the releases Atom feed.
+
+    Preferred over the API because api.github.com allows only 60
+    unauthenticated requests per hour PER IP: behind a VPN, CGNAT or a company
+    gateway that quota is shared with strangers and is often already spent, so
+    the API can fail permanently through no fault of the user. The feed is
+    served by github.com itself and has no such quota.
+
+    Only the first few KB are read. The whole feed carries the release notes
+    of the last ten releases (~20 KB) but the newest tag appears in the first
+    <entry> within the first kilobyte - downloading the rest just to throw it
+    away is wasted time on a slow or tunnelled connection.
+    """
+    import re as _re
+    pat = _re.compile(r"<id>tag:github\.com[^<]*/([^/<]+)</id>")
+    with _url_open(RELEASES_FEED, timeout) as r:
+        buf = ""
+        for _ in range(8):                      # cap the read; never stream 20 KB
+            chunk = r.read(4096)
+            if not chunk:
+                break
+            buf += chunk.decode("utf-8", "replace")
+            # The feed's own <id> comes first and has no tag path, so wait for
+            # the one inside the first <entry> - that is the release tag.
+            if "<entry>" in buf:
+                m = pat.search(buf.split("<entry>", 1)[1])
+                if m:
+                    return m.group(1)
+    return None
+
+
+def fetch_latest_version(timeout=6):
+    """Latest release tag from GitHub, or None if anything goes wrong.
+
+    Tries the Atom feed first, then the JSON API as a backup.
+
+    Failures are swallowed on purpose: no network, GitHub down, a corporate
+    proxy - none of that is the user's problem, and an update check must never
+    interrupt someone who just wants to configure their wheel.
+    """
+    # Feed first: it is the source that actually works for everyone. The API
+    # is kept as a fallback for the unlikely case the feed format changes.
+    for source in (_fetch_tag_from_feed, _fetch_tag_from_api):
+        try:
+            tag = source(timeout)
+            if tag:
+                return tag
+        except Exception:
+            continue
+    return None
+
+
+_settings_lock = threading.Lock()
+
+
+def save_settings():
+    # The poller thread saves too (it records the detected wheel), so this can
+    # run concurrently with the GUI thread editing profiles. Without the lock,
+    # json.dump can walk a dict that another thread is mutating and blow up
+    # with "dictionary changed size during iteration" - or write a truncated
+    # file. Serialising the dump keeps settings.json always well-formed.
+    with _settings_lock:
+        try:
+            # Snapshot first, then write. json.dump walks the live dict while
+            # holding the file open, so a GUI-thread edit landing mid-write
+            # could raise "dictionary changed size during iteration" or leave
+            # a truncated file. deepcopy is used rather than .copy() because a
+            # shallow copy still shares the nested "profiles" dict - the very
+            # one that grows when a preset is added.
+            snapshot = copy.deepcopy(global_settings)
+        except Exception:
+            snapshot = None
+        try:
+            with open(SETTINGS_FILE, "w") as f:
+                json.dump(snapshot if snapshot is not None else global_settings, f, indent=2)
+        except Exception:
+            pass
 
 
 def set_language(code):
@@ -878,6 +1280,12 @@ def set_test_override(key):
     test_override = key
     if key in DEVICE_PROFILES:
         active_profile = DEVICE_PROFILES[key]
+
+
+# Re-apply a forced test device from the last session. Saving the choice
+# without restoring it here would leave the dropdown showing an override that
+# isn't actually in effect - the setting would look applied but do nothing.
+set_test_override(global_settings.get("test_device"))
 
 
 def _detect_profile():
@@ -906,7 +1314,12 @@ def _switch_mode(mode_byte):
     h = hid.device(); h.open(VID, PID_COMPAT)
     h.write([0x00, 0xF8, 0x0A, 0, 0, 0, 0, 0]); time.sleep(0.1)      # revert on USB reset
     h.write([0x00, 0xF8, 0x09, mode_byte, 0x01, 0, 0, 0]); time.sleep(0.1)  # switch + detach
-    h.close()
+    # The wheel yanks itself off the USB bus on the mode-switch command, so
+    # closing the (now dead) handle routinely raises. That is expected, not a
+    # failure of the switch - letting it propagate would abort the caller
+    # before it ever waits for the wheel to re-enumerate.
+    try: h.close()
+    except Exception: pass
 
 
 def _wait_for_pid(pid, timeout=4.0):
@@ -995,8 +1408,38 @@ class Poller(QThread):
                     state["clutch"] = _ax(active_profile["clutch"])
                     state["raw"] = list(data[:16]); state["connected"] = True
             except Exception:
-                state["connected"] = False; dev = None
+                # Close the handle before dropping it. Just setting dev=None
+                # leaks the hidapi handle: Windows keeps the device claimed,
+                # so re-plugging the wheel can fail to reopen with "access
+                # denied" until the app restarts.
+                state["connected"] = False
+                if dev is not None:
+                    try:
+                        with dev_lock: dev.close()
+                    except Exception: pass
+                    dev = None
             time.sleep(0.005)
+
+
+# HID button numbers, read straight off the bit order in decode_buttons_*
+# below. In a HID report the buttons occupy consecutive bits (after the 4-bit
+# hat nibble) and are numbered in exactly that order, so bit index + 1 is the
+# "Button N" a game shows. Keeping this table next to the decoders is
+# deliberate: if a bit assignment there ever changes, the numbers here have to
+# change with it.
+HID_BUTTON_NUMBERS = {
+    "DFGT": {"sh_x": 1, "sh_square": 2, "sh_circle": 3, "sh_triangle": 4,
+             "paddle_right": 5, "paddle_left": 6, "r2": 7, "l2": 8,
+             "select": 9, "start": 10, "r3": 11, "l3": 12,
+             "up": 13, "dn": 14, "dial_enter": 15, "plus": 16,
+             "dial_right": 17, "dial_left": 18, "minus": 19, "horn": 20, "ps": 21},
+    "G27":  {"red_1": 1, "red_2": 2, "red_3": 3, "red_4": 4,
+             "paddle_right": 5, "paddle_left": 6, "wheel_rt": 7, "wheel_lt": 8,
+             "gear_1": 9, "gear_2": 10, "gear_3": 11, "gear_4": 12,
+             "gear_5": 13, "gear_6": 14, "gear_r": 15,
+             "sh_triangle": 16, "sh_square": 17, "sh_x": 18, "sh_circle": 19,
+             "wheel_rm": 20, "wheel_lm": 21, "wheel_rb": 22, "wheel_lb": 23},
+}
 
 
 def decode_buttons_dfgt(raw):
@@ -1296,6 +1739,25 @@ class InputMonitor(QWidget):
         super().__init__()
         self.setMinimumSize(560, 462)
         self.pressed = set()
+        # False = friendly names (L1, START, the PlayStation shapes), True =
+        # the HID button numbers games actually report ("Button 20"). Two
+        # different vocabularies for the same hardware. Remembered globally
+        # (not per profile): whichever vocabulary the user thinks in, they
+        # think in it for every wheel.
+        self.numbered = bool(global_settings.get("button_numbers", False))
+
+    def _num(self, key):
+        """HID button number for `key` on the active wheel, or None."""
+        prof = "G27" if active_profile is DEVICE_PROFILES["G27"] else "DFGT"
+        return HID_BUTTON_NUMBERS.get(prof, {}).get(key)
+
+    def _lbl(self, key, default):
+        """Label to draw: the HID number in numbered mode, else the name."""
+        if self.numbered:
+            n = self._num(key)
+            if n is not None:
+                return str(n)
+        return default
 
     def _key(self, p, x, y, w, h, label, on, r=9, circle=False, shape=None, col=None):
         acc = QColor(ACCENT)
@@ -1345,10 +1807,17 @@ class InputMonitor(QWidget):
     def _face_buttons(self, p, cx, cy, P, d=28, sp=28):
         h = d / 2
         mc = theme_col("#f0f0f0", "#1b1b1b")   # black/white per theme (no color)
-        self._key(p, cx - h, cy - sp - h, d, d, "", "sh_triangle" in P, circle=True, shape="triangle", col=mc)
-        self._key(p, cx - sp - h, cy - h, d, d, "", "sh_square" in P, circle=True, shape="square", col=mc)
-        self._key(p, cx + sp - h, cy - h, d, d, "", "sh_circle" in P, circle=True, shape="circle", col=mc)
-        self._key(p, cx - h, cy + sp - h, d, d, "", "sh_x" in P, circle=True, shape="x", col=mc)
+        # In numbered mode the shape IS the label, so draw the number instead
+        # of the glyph - otherwise these four would be the only buttons left
+        # unnumbered, which is exactly the confusion this mode exists to fix.
+        for key, shape, bx, by in (("sh_triangle", "triangle", cx - h, cy - sp - h),
+                                   ("sh_square", "square", cx - sp - h, cy - h),
+                                   ("sh_circle", "circle", cx + sp - h, cy - h),
+                                   ("sh_x", "x", cx - h, cy + sp - h)):
+            if self.numbered:
+                self._key(p, bx, by, d, d, self._lbl(key, ""), key in P, circle=True)
+            else:
+                self._key(p, bx, by, d, d, "", key in P, circle=True, shape=shape, col=mc)
 
     def _dpad(self, p, cx, cy, P, s=28, g=5):
         txt = theme_col("#f0f0f0", "#1b1b1b").name()
@@ -1362,18 +1831,22 @@ class InputMonitor(QWidget):
     def _pill(self, p, x, y, w, h, label, on, fs=9):
         self._key(p, x, y, w, h, label, on, r=h / 2)
 
-    def _gt_center(self, p, cx, cy, r):
+    def _gt_center(self, p, cx, cy, r, on=False, label=None):
         ring = theme_col("#11151f", "#dfe3ea"); inner = theme_col("#05070b", "#10131a")
         edge = theme_col("#2a3142", "#c2c7d2")
         p.setPen(QPen(edge, 2)); p.setBrush(ring)
         p.drawEllipse(QPointF(cx, cy), r, r)
         p.setPen(Qt.NoPen); p.setBrush(inner)
         p.drawEllipse(QPointF(cx, cy), r - 6, r - 6)
-        f = QFont(); f.setBold(True); f.setItalic(True); f.setPointSize(max(1, int(r * 0.62)))
-        p.setFont(f); p.setPen(QColor("#f3f4f6"))
-        p.drawText(QRectF(cx - r, cy - r, 2 * r, 2 * r), Qt.AlignCenter, "GT")
+        if on:                                  # the GT badge IS the horn button
+            p.setBrush(QColor(ACCENT)); p.setPen(Qt.NoPen)
+            p.drawEllipse(QPointF(cx, cy), r - 6, r - 6)
+        f = QFont(); f.setBold(True); f.setItalic(not label); f.setPointSize(
+            max(1, int(r * (0.5 if label else 0.62))))
+        p.setFont(f); p.setPen(QColor("#1c1c1c") if on else QColor("#f3f4f6"))
+        p.drawText(QRectF(cx - r, cy - r, 2 * r, 2 * r), Qt.AlignCenter, label or "GT")
 
-    def _dial(self, p, cx, cy, r, on=False):
+    def _dial(self, p, cx, cy, r, on=False, label="\u21B5", side_labels=None):
         base = theme_col("#222a3a", "#eef0f4"); edge = theme_col("#3a4256", "#c8ccd6")
         red = QColor("#e0463c"); tick = theme_col("#5a6276", "#aeb4c2")
         p.setPen(QPen(edge, 2)); p.setBrush(base)
@@ -1393,22 +1866,32 @@ class InputMonitor(QWidget):
         p.drawEllipse(QPointF(cx, cy), cr, cr)
         f = QFont(); f.setBold(True); f.setPointSize(max(1, int(cr * 0.95))); p.setFont(f)
         p.setPen(QColor("#1c1c1c") if on else theme_col("#e6e8ee", "#2a2f3a"))
-        p.drawText(QRectF(cx - cr, cy - cr, 2 * cr, 2 * cr), Qt.AlignCenter, "\u21B5")
+        p.drawText(QRectF(cx - cr, cy - cr, 2 * cr, 2 * cr), Qt.AlignCenter, label)
         p.setBrush(red); p.setPen(Qt.NoPen); a = 6
         lx = cx - r - 8; rx = cx + r + 8
         p.drawPolygon(QPolygonF([QPointF(lx + a, cy - a), QPointF(lx - a, cy), QPointF(lx + a, cy + a)]))
         p.drawPolygon(QPolygonF([QPointF(rx - a, cy - a), QPointF(rx + a, cy), QPointF(rx - a, cy + a)]))
+        # Turning the dial reports two more buttons (left/right steps). They
+        # have no key of their own to draw, so in numbered mode the numbers go
+        # beside the arrows - otherwise those two would be the only inputs the
+        # overlay can't account for.
+        if side_labels:
+            lft, rgt = side_labels
+            f2 = QFont(); f2.setBold(True); f2.setPointSize(8); p.setFont(f2)
+            p.setPen(theme_col("#e6e8ee", "#2a2f3a"))
+            p.drawText(QRectF(lx - 34, cy - 8, 22, 16), Qt.AlignRight | Qt.AlignVCenter, lft)
+            p.drawText(QRectF(rx + 12, cy - 8, 22, 16), Qt.AlignLeft | Qt.AlignVCenter, rgt)
 
     def _paint_g27(self, p, P, chan):
         D = 38
         self._section(p, 20, 8, tr("input.wheel"))
-        self._pill(p, 52, 30, 176, 26, tr("input.lpad"), "paddle_left" in P)
-        self._pill(p, 332, 30, 176, 26, tr("input.rpad"), "paddle_right" in P)
+        self._pill(p, 52, 30, 176, 26, self._lbl("paddle_left", tr("input.lpad")), "paddle_left" in P)
+        self._pill(p, 332, 30, 176, 26, self._lbl("paddle_right", tr("input.rpad")), "paddle_right" in P)
         lcx, rcx = 137, 423
         for i, k in enumerate(("wheel_lt", "wheel_lm", "wheel_lb")):
-            self._key(p, lcx - D / 2, 72 + i * 46, D, D, ["L1", "L2", "L3"][i], k in P, circle=True)
+            self._key(p, lcx - D / 2, 72 + i * 46, D, D, self._lbl(k, ["L1", "L2", "L3"][i]), k in P, circle=True)
         for i, k in enumerate(("wheel_rt", "wheel_rm", "wheel_rb")):
-            self._key(p, rcx - D / 2, 72 + i * 46, D, D, ["R1", "R2", "R3"][i], k in P, circle=True)
+            self._key(p, rcx - D / 2, 72 + i * 46, D, D, self._lbl(k, ["R1", "R2", "R3"][i]), k in P, circle=True)
         p.setPen(QPen(chan, 1)); p.drawLine(QPointF(30, 226), QPointF(530, 226))
         self._section(p, 20, 240, tr("input.shifter"))
         # face + d-pad clusters centred symmetrically over the 1-2-3-4 row
@@ -1417,7 +1900,7 @@ class InputMonitor(QWidget):
         self._dpad(p, 236, 326, P, s=34, g=6)
         for i in range(4):
             cxr = 80 + i * 56
-            self._key(p, cxr - D / 2, 416, D, D, str(i + 1), f"red_{i+1}" in P, circle=True)
+            self._key(p, cxr - D / 2, 416, D, D, self._lbl(f"red_{i+1}", str(i + 1)), f"red_{i+1}" in P, circle=True)
         self._section(p, 330, 240, tr("input.gear"))
         sepc = theme_col("#2f3645", "#d2d6de")
         p.setPen(QPen(sepc, 1)); p.drawLine(QPointF(312, 262), QPointF(312, 438))
@@ -1430,28 +1913,32 @@ class InputMonitor(QWidget):
         p.drawLine(QPointF(rx, gm), QPointF(rx, gb_c))
         tops = ["1", "3", "5"]; bots = ["2", "4", "6"]
         for i, x in enumerate(gx):
-            self._key(p, x - D / 2, gt_c - D / 2, D, D, tops[i], f"gear_{tops[i]}" in P, circle=True)
-            self._key(p, x - D / 2, gb_c - D / 2, D, D, bots[i], f"gear_{bots[i]}" in P, circle=True)
-        self._key(p, rx - D / 2, gb_c - D / 2, D, D, "R", "gear_r" in P, circle=True)
+            self._key(p, x - D / 2, gt_c - D / 2, D, D, self._lbl(f"gear_{tops[i]}", tops[i]), f"gear_{tops[i]}" in P, circle=True)
+            self._key(p, x - D / 2, gb_c - D / 2, D, D, self._lbl(f"gear_{bots[i]}", bots[i]), f"gear_{bots[i]}" in P, circle=True)
+        self._key(p, rx - D / 2, gb_c - D / 2, D, D, self._lbl("gear_r", "R"), "gear_r" in P, circle=True)
 
     def _paint_dfgt(self, p, P, chan):
-        self._pill(p, 40, 14, 152, 24, tr("input.lpad"), "paddle_left" in P)
-        self._pill(p, 368, 14, 152, 24, tr("input.rpad"), "paddle_right" in P)
-        self._pill(p, 92, 58, 60, 26, "L2", "l2" in P)
-        self._pill(p, 408, 58, 60, 26, "R2", "r2" in P)
-        self._pill(p, 166, 96, 50, 28, "L3", "l3" in P)
-        self._key(p, 340, 94, 30, 30, "R3", "r3" in P, circle=True)
+        self._pill(p, 40, 14, 152, 24, self._lbl("paddle_left", tr("input.lpad")), "paddle_left" in P)
+        self._pill(p, 368, 14, 152, 24, self._lbl("paddle_right", tr("input.rpad")), "paddle_right" in P)
+        self._pill(p, 92, 58, 60, 26, self._lbl("l2", "L2"), "l2" in P)
+        self._pill(p, 408, 58, 60, 26, self._lbl("r2", "R2"), "r2" in P)
+        self._pill(p, 166, 96, 50, 28, self._lbl("l3", "L3"), "l3" in P)
+        self._key(p, 340, 94, 30, 30, self._lbl("r3", "R3"), "r3" in P, circle=True)
         self._dpad(p, 113, 166, P)
-        self._gt_center(p, 270, 165, 48)
+        self._gt_center(p, 270, 165, 48, "horn" in P,
+                        self._lbl("horn", "") if self.numbered else None)
         self._face_buttons(p, 425, 166, P, d=28, sp=31)
-        self._pill(p, 504, 148, 46, 26, "DN", "dn" in P)
-        self._pill(p, 504, 186, 46, 26, "UP", "up" in P)
-        self._key(p, 98, 238, 30, 30, "+", "plus" in P, circle=True)
-        self._key(p, 98, 284, 30, 30, "\u2212", "minus" in P, circle=True)
-        self._pill(p, 248, 238, 44, 28, "PS", "ps" in P)
-        self._pill(p, 196, 288, 66, 26, "SELECT", "select" in P)
-        self._pill(p, 284, 288, 60, 26, "START", "start" in P)
-        self._dial(p, 426, 284, 38, "dial_enter" in P)
+        self._pill(p, 504, 148, 46, 26, self._lbl("dn", "DN"), "dn" in P)
+        self._pill(p, 504, 186, 46, 26, self._lbl("up", "UP"), "up" in P)
+        self._key(p, 98, 238, 30, 30, self._lbl("plus", "+"), "plus" in P, circle=True)
+        self._key(p, 98, 284, 30, 30, self._lbl("minus", "\u2212"), "minus" in P, circle=True)
+        self._pill(p, 248, 238, 44, 28, self._lbl("ps", "PS"), "ps" in P)
+        self._pill(p, 196, 288, 66, 26, self._lbl("select", "SELECT"), "select" in P)
+        self._pill(p, 284, 288, 60, 26, self._lbl("start", "START"), "start" in P)
+        self._dial(p, 426, 284, 38, "dial_enter" in P,
+                   label=self._lbl("dial_enter", "\u21B5"),
+                   side_labels=((self._lbl("dial_left", ""), self._lbl("dial_right", ""))
+                                if self.numbered else None))
 
     def paintEvent(self, e):
         p = QPainter(self); p.setRenderHint(QPainter.Antialiasing)
@@ -1611,6 +2098,8 @@ def _defer_infobar(kind, *args, **kwargs):
        one is on screen at a time.
     """
     global _LAST_INFOBAR
+    # Optional (label_key, callback): renders a real button inside the bar.
+    extra = kwargs.pop("_extra", None)
 
     def _show():
         global _LAST_INFOBAR
@@ -1625,6 +2114,25 @@ def _defer_infobar(kind, *args, **kwargs):
             _LAST_INFOBAR = getattr(InfoBar, kind)(*args, **kwargs)
         except Exception:
             _LAST_INFOBAR = None
+        if extra is not None and _LAST_INFOBAR is not None:
+            # Best-effort: if this qfluentwidgets build won't take a widget,
+            # the notification still shows - it just loses the shortcut.
+            try:
+                key, cb = extra
+                btn = PushButton(tr(key))
+                btn.clicked.connect(cb)
+                _LAST_INFOBAR.addWidget(btn)
+                # The bar is centred when it is created, then addWidget makes
+                # it wider WITHOUT moving it - so it grows to the right and
+                # ends up visibly off-centre. Re-centre against the parent
+                # once the new width is known.
+                bar = _LAST_INFOBAR
+                par = bar.parentWidget()
+                if par is not None:
+                    bar.adjustSize()
+                    bar.move((par.width() - bar.width()) // 2, bar.y())
+            except Exception:
+                pass
     try:
         QTimer.singleShot(0, _show)
     except Exception:
@@ -1882,6 +2390,13 @@ class PresetsPanel(QWidget):
         lay.addLayout(self.listbox)
         lay.addStretch(1)
 
+        # Both of these decide when a preset gets applied on its own, so they
+        # belong with the preset list rather than buried in Settings.
+        self.cb_autogame = CheckBox(tr("ui.autogame"))
+        self.cb_autogame.setChecked(bool(global_settings.get("auto_game_profile", True)))
+        self.cb_autogame.setToolTip(tr("ui.autogame_h"))
+        self.cb_autogame.stateChanged.connect(self._on_autogame)
+        lay.addWidget(self.cb_autogame)
         self.cb_auto = CheckBox(tr("ui.autoload"))
         self.cb_auto.setChecked(bool(global_settings.get("auto_load", False)))
         self.cb_auto.stateChanged.connect(self._on_auto)
@@ -1898,6 +2413,8 @@ class PresetsPanel(QWidget):
     def retranslate(self):
         self.hdr._lbl.setText(tr("ui.presets"))
         self.cb_auto.setText(tr("ui.autoload"))
+        self.cb_autogame.setText(tr("ui.autogame"))
+        self.cb_autogame.setToolTip(tr("ui.autogame_h"))
         self.btn_add.setToolTip(tr("prof.add")); self.btn_dup.setToolTip(tr("prof.dup"))
         self.btn_ren.setToolTip(tr("prof.edit")); self.btn_del.setToolTip(tr("prof.del"))
 
@@ -2001,6 +2518,12 @@ class PresetsPanel(QWidget):
             profs[new] = profs.pop(cur)
             global_settings["selected_profile"] = new
             cur = new
+        elif new and new != cur:
+            # Name is taken. The exe/logo edits below still apply to the
+            # original profile, but say so - silently keeping the old name
+            # looked like the rename had worked.
+            _defer_infobar("warning", tr("prof.name_taken"), tr("prof.name_taken_body").format(new),
+                           duration=3000, position=InfoBarPosition.TOP, parent=self.window())
         # store exe / logo on the (possibly renamed) profile
         p = profs.setdefault(cur, {})
         p["exe_path"] = exe or ""
@@ -2027,8 +2550,7 @@ class PresetsPanel(QWidget):
         cur = self._selected()
         if cur == "Global":
             return
-        if _confirm_dialog("Delete Profile",
-                           f"Delete profile \u201c{cur}\u201d? This cannot be undone.", self.window()):
+        if _confirm_dialog(tr("prof.del_title"), tr("prof.del_msg").format(cur), self.window()):
             gone = global_settings["profiles"].pop(cur, None)
             # clean up the game's dinput8.dll if no other profile still uses it
             try:
@@ -2049,6 +2571,9 @@ class PresetsPanel(QWidget):
     def _on_auto(self, *_):
         global_settings["auto_load"] = self.cb_auto.isChecked(); save_settings()
 
+    def _on_autogame(self, *_):
+        global_settings["auto_game_profile"] = self.cb_autogame.isChecked(); save_settings()
+
     def restyle(self):
         for it in self.items:
             it.set_selected(it.selected)
@@ -2057,11 +2582,11 @@ class PresetsPanel(QWidget):
         if name == "Global":
             return
         menu = QMenu(self)
-        act_ren = menu.addAction("Rename")
-        act_del = menu.addAction("Delete")
+        act_ren = menu.addAction(tr("prof.ren_title"))
+        act_del = menu.addAction(tr("dlg.delete"))
         chosen = menu.exec(gpos)
         if chosen == act_ren:
-            new = _name_dialog("Rename Profile", name, self.window())
+            new = _name_dialog(tr("prof.ren_title"), name, self.window())
             if new and new != name and new not in global_settings["profiles"]:
                 profs = global_settings["profiles"]
                 profs[new] = profs.pop(name)
@@ -2071,8 +2596,7 @@ class PresetsPanel(QWidget):
                 if self.on_select:
                     self.on_select(global_settings["selected_profile"])
         elif chosen == act_del:
-            if _confirm_dialog("Delete Profile",
-                               f"Delete profile \u201c{name}\u201d? This cannot be undone.", self.window()):
+            if _confirm_dialog(tr("prof.del_title"), tr("prof.del_msg").format(name), self.window()):
                 global_settings["profiles"].pop(name, None)
                 if global_settings.get("selected_profile") == name:
                     global_settings["selected_profile"] = "Global"
@@ -2157,7 +2681,9 @@ class TelemetryPanel(QWidget):
         self._center_state["active"] = False; self._center_timer.stop()
         w = main_window.wheelset
         f = w.s_center.value() if w.cb_center.isChecked() else 0
-        ffb_write(autocenter_cmd(f))
+        # Keep the profile's own ramp: omitting it re-sent the default 7 and
+        # silently overrode whatever ramp the user had applied.
+        ffb_write(autocenter_cmd(f, w.s_ramp.value()))
 
     def refresh(self):
         n = state["steer_norm"]
@@ -2177,6 +2703,19 @@ class TelemetryPanel(QWidget):
 # --------------------------------------------------------------------
 #  RIGHT column tabs
 # --------------------------------------------------------------------
+def _restyle_accent(*labels):
+    """Re-apply the accent colour to labels after a theme switch.
+
+    Setting a colour once at construction isn't enough: switching theme makes
+    qfluentwidgets re-polish every widget, which wipes the per-widget
+    stylesheet and leaves these labels plain black/white. Anything drawn in
+    the accent colour has to be repainted from the theme handler.
+    """
+    for lbl in labels:
+        try: lbl.setStyleSheet(f"color:{ACCENT};")
+        except Exception: pass
+
+
 def _slider_block(lay, name, lo, hi, val, suffix, hint):
     top = QHBoxLayout()
     nm = StrongBodyLabel(name)
@@ -2223,7 +2762,7 @@ class WheelSettingsTab(QWidget):
                                     tr("wheel.ramp_h"))
         lay.addSpacing(6)
         self.h_steer = section_header(tr("wheel.sec_steer")); lay.addWidget(self.h_steer); lay.addSpacing(6)
-        self.s_rot = _slider_block(lay, tr("wheel.rotation"), 90, 900, prof.get("angle", 900), "\u00b0",
+        self.s_rot = _slider_block(lay, tr("wheel.rotation"), 40, 900, prof.get("angle", 900), "\u00b0",
                                    tr("wheel.rotation_h"))
         prow = QHBoxLayout(); prow.setSpacing(6)
         for d in (270, 360, 540, 720, 900):
@@ -2249,6 +2788,8 @@ class WheelSettingsTab(QWidget):
     def restyle(self):
         for hd in (self.h_ffb, self.h_steer):
             hd._bar.setStyleSheet(f"background:{ACCENT}; border-radius:1px;")
+        _restyle_accent(*(sl._val for sl in (self.s_gain, self.s_spring, self.s_damper,
+                                             self.s_center, self.s_ramp, self.s_rot)))
 
     def load_profile(self, name):
         prof = global_settings["profiles"].get(name, {})
@@ -2606,6 +3147,7 @@ class LutTab(QWidget):
 
     def restyle(self):
         self.h_sec._bar.setStyleSheet(f"background:{ACCENT}; border-radius:1px;")
+        _restyle_accent(self.global_notice)
         self.curve.update()
 
 
@@ -2646,6 +3188,13 @@ class FFBTestTab(QWidget):
         self.reset_hint = CaptionLabel(tr("ffb.reset_h"))
         lay.addWidget(self.reset_hint)
         lay.addStretch(1)
+
+    def restyle(self):
+        # This tab had no restyle at all, so its section bars and the strength
+        # value kept the previous theme's colours until the app restarted.
+        for hd in (self.h_test, self.h_adv):
+            hd._bar.setStyleSheet(f"background:{ACCENT}; border-radius:1px;")
+        _restyle_accent(self.s_strength._val)
 
     def retranslate(self):
         self.h_test._lbl.setText(tr("ffb.title")); self.h_adv._lbl.setText(tr("ffb.advanced"))
@@ -2712,7 +3261,7 @@ class FFBTestTab(QWidget):
 
     def _reset_driver(self):
         restore_ffb_defaults()
-        _defer_infobar("success", "Driver FFB reset", "All app-written FFB registry values were removed.",
+        _defer_infobar("success", tr("ffb.reset_ok"), tr("ffb.reset_ok_body"),
                         duration=2500, position=InfoBarPosition.TOP, parent=self.window())
 
 
@@ -2723,8 +3272,20 @@ class InputMonitorTab(QWidget):
         # layout expose its real minimum makes the window refuse to shrink past
         # the point where buttons would clip (instead of showing a scrollbar).
         lay = QVBoxLayout(self); lay.setContentsMargins(2, 4, 12, 8); lay.setSpacing(6)
-        self.hdr = section_header(tr("tab.input")); lay.addWidget(self.hdr); lay.addSpacing(6)
+        hrow = QHBoxLayout(); hrow.setContentsMargins(0, 0, 0, 0); hrow.setSpacing(8)
+        self.hdr = section_header(tr("tab.input"))
+        hrow.addWidget(self.hdr); hrow.addStretch(1)
+        # Games label these buttons by their HID number ("Button 20"), the
+        # wheel labels them by name (L2, START). Neither is wrong, so offer
+        # both rather than picking one and leaving the user to translate.
+        self.btn_mode = TransparentPushButton(tr("input.mode_numbers"))
+        self.btn_mode.clicked.connect(self._toggle_mode)
+        hrow.addWidget(self.btn_mode, 0, Qt.AlignVCenter)
+        lay.addLayout(hrow); lay.addSpacing(6)
         self.mon = InputMonitor()
+        # After self.mon exists: the label reads the restored mode off it, so
+        # syncing any earlier crashes on a missing attribute.
+        self._sync_mode_label()
         lay.addWidget(self.mon, 0, Qt.AlignHCenter)
         lay.addSpacing(12)
         self.led = PushButton(tr("input.led")); self.led.clicked.connect(self._led)
@@ -2733,8 +3294,21 @@ class InputMonitorTab(QWidget):
         lay.addWidget(self.led_status)
         lay.addStretch(1)
 
+    def _toggle_mode(self):
+        self.mon.numbered = not self.mon.numbered
+        global_settings["button_numbers"] = self.mon.numbered
+        save_settings()
+        self._sync_mode_label()
+        self.mon.update()
+
+    def _sync_mode_label(self):
+        # The button says what you'd switch TO, not the current state.
+        self.btn_mode.setText(tr("input.mode_names") if self.mon.numbered
+                              else tr("input.mode_numbers"))
+
     def retranslate(self):
         self.hdr._lbl.setText(tr("tab.input")); self.led.setText(tr("input.led"))
+        self._sync_mode_label()
         self.mon.update()
 
     def _sync_caps(self):
@@ -2876,7 +3450,7 @@ class SettingsTab(QWidget):
         scroll.viewport().setStyleSheet("background:transparent;")
         outer.addWidget(scroll)
         host = QWidget(); host.setStyleSheet("background:transparent;")
-        lay = QVBoxLayout(host); lay.setContentsMargins(2, 4, 12, 4); lay.setSpacing(2)
+        lay = QVBoxLayout(host); lay.setContentsMargins(2, 4, 12, 4); lay.setSpacing(4)
         scroll.setWidget(host)
 
         self.sec_gen = self._sec(lay, "set.general")
@@ -2890,8 +3464,20 @@ class SettingsTab(QWidget):
         self.cb_tray.setChecked(bool(global_settings.get("minimize_to_tray", False)))
         self.cb_tray.stateChanged.connect(self._on_tray)
         lay.addWidget(self.cb_tray)
+        lay.addSpacing(2)                       # a checkbox and its hint were touching
         self.tray_hint = CaptionLabel(tr("set.tray_h"))
         self.tray_hint.setWordWrap(True); lay.addWidget(self.tray_hint)
+        self.cb_startup = CheckBox(tr("set.startup"))
+        # Read the real registry state, not a stored preference: the user may
+        # have removed the entry from Task Manager's Startup tab, and the box
+        # must reflect what Windows will actually do.
+        self.cb_startup.setChecked(startup_enabled())
+        self.cb_startup.stateChanged.connect(self._on_startup)
+        lay.addWidget(self.cb_startup)
+        lay.addSpacing(2)
+        self.startup_hint = CaptionLabel(tr("set.startup_h"))
+        self.startup_hint.setWordWrap(True); self.startup_hint.setMinimumWidth(1)
+        lay.addWidget(self.startup_hint)
         lay.addSpacing(10)
 
         self.sec_app = self._sec(lay, "set.appearance")
@@ -2925,6 +3511,27 @@ class SettingsTab(QWidget):
         self.row_test = self._field(lay, "set.devmode", self.combo_test)
         self.test_hint = CaptionLabel(tr("set.devmode_h"))
         self.test_hint.setWordWrap(True); lay.addWidget(self.test_hint)
+
+        self.sec_upd = self._sec(lay, "set.updates_sec")
+        self.cb_upd = CheckBox(tr("set.updates"))
+        self.cb_upd.setChecked(bool(global_settings.get("check_updates", True)))
+        self.cb_upd.stateChanged.connect(self._on_updates)
+        lay.addWidget(self.cb_upd)
+        lay.addSpacing(2)                       # let the hint breathe
+        self.upd_hint = CaptionLabel(tr("set.updates_h"))
+        self.upd_hint.setWordWrap(True); self.upd_hint.setMinimumWidth(1)
+        lay.addWidget(self.upd_hint)
+        lay.addSpacing(8)
+        self.btn_upd = PushButton(tr("set.check_now"))
+        self.btn_upd.clicked.connect(self._check_updates_now)
+        # Same signal the hub uses for its own result handling, so the button
+        # is restored no matter how the check ended - success, "up to date",
+        # or a network failure.
+        try:
+            self.hub.update_checked.connect(self._update_finished)
+        except Exception:
+            pass
+        lay.addWidget(self.btn_upd)
         lay.addStretch(1)
 
     def _sec(self, lay, key):
@@ -2962,9 +3569,43 @@ class SettingsTab(QWidget):
         global_settings["minimize_to_tray"] = self.cb_tray.isChecked(); save_settings()
         self.hub.update_tray_state()
 
+    def _on_startup(self, *_):
+        want = self.cb_startup.isChecked()
+        if not set_startup(want):
+            # Writing failed (locked-down policy, roaming profile...). Put the
+            # box back so it never claims something Windows won't honour.
+            self._guard = True
+            self.cb_startup.setChecked(startup_enabled())
+            self._guard = False
+
+    def _on_updates(self, *_):
+        global_settings["check_updates"] = self.cb_upd.isChecked(); save_settings()
+
+    def _check_updates_now(self):
+        # self.hub is the ControlHub we were constructed with. self.window()
+        # depends on this widget already being parented into the window tree,
+        # which isn't guaranteed - and the old silent `except: pass` turned
+        # that into a button that looked dead instead of reporting anything.
+        #
+        # The request runs off-thread, so without feedback the button just sat
+        # there looking unresponsive for however long the network took.
+        self.btn_upd.setEnabled(False)
+        self.btn_upd.setText(tr("set.checking"))
+        self.hub.check_updates(manual=True)
+
+    def _update_finished(self, *_):
+        """Restore the button once a result (any result) comes back."""
+        try:
+            self.btn_upd.setEnabled(True)
+            self.btn_upd.setText(tr("set.check_now"))
+        except Exception:
+            pass
+
     def _on_test(self, *_):
         if self._guard: return
         set_test_override(self.combo_test.currentData())
+        global_settings["test_device"] = self.combo_test.currentData()
+        save_settings()
         # The override changes active_profile, but the capability-driven parts
         # of the UI (clutch bar, LED test, device name) are refreshed by the
         # poller - which never runs while no wheel is connected. Refresh them
@@ -2993,15 +3634,21 @@ class SettingsTab(QWidget):
         self.tray_hint.setStyleSheet(f"color:{muted};")
         self.scale_hint.setStyleSheet(f"color:{muted};")
         self.test_hint.setStyleSheet(f"color:{muted};")
+        self.upd_hint.setStyleSheet(f"color:{muted};")
+        self.startup_hint.setStyleSheet(f"color:{muted};")
 
     def retranslate(self):
         self._guard = True
-        for hd in (self.sec_app, self.sec_gen, self.sec_test):
+        for hd in (self.sec_app, self.sec_gen, self.sec_test, self.sec_upd):
             hd._lbl.setText(tr(hd._key))
         for lbl, key in ((self.row_theme, "set.theme"), (self.row_lang, "set.language"),
                          (self.row_test, "set.devmode")):
             lbl.setText(tr(key))
         self.cb_tray.setText(tr("set.tray")); self.tray_hint.setText(tr("set.tray_h"))
+        self.cb_startup.setText(tr("set.startup")); self.startup_hint.setText(tr("set.startup_h"))
+        self.cb_upd.setText(tr("set.updates")); self.upd_hint.setText(tr("set.updates_h"))
+        if self.btn_upd.isEnabled():        # don't clobber "Checking..." mid-flight
+            self.btn_upd.setText(tr("set.check_now"))
         self.test_hint.setText(tr("set.devmode_h"))
         self.row_scale.setText(tr("set.ui_scale")); self.scale_hint.setText(tr("set.ui_scale_h"))
         ti = self.combo_theme.currentIndex()
@@ -3195,6 +3842,12 @@ class CustomTitleBar(TitleBar):
 #  Main window
 # --------------------------------------------------------------------
 class ControlHub(FramelessWindow):
+    # (latest_tag_or_None, was_manual). Emitted from the update-check worker
+    # thread; Qt queues it onto the GUI thread automatically.
+    update_checked = Signal(object, bool)
+    # Profile name whose game just started, or "" when none is running.
+    game_profile_changed = Signal(str)
+
     def __init__(self):
         super().__init__()
         global active_profile
@@ -3202,7 +3855,26 @@ class ControlHub(FramelessWindow):
         self.setTitleBar(CustomTitleBar(self))
         self.setWindowTitle("Legacy Wheel Hub")
         self._restore_geometry()
-        if global_settings.get("last_device") in DEVICE_PROFILES:
+        self.update_checked.connect(self._on_update_result)
+        self._auto_switch = False
+        self.game_profile_changed.connect(self._on_game_profile)
+        self._start_game_watcher()
+        # Delayed so it never competes with window setup. Rate-limited to once
+        # a day: checking on every launch is pointless for a project that
+        # releases occasionally, and it burns through GitHub's per-IP quota
+        # faster for everyone sharing an address behind a VPN or CGNAT.
+        if global_settings.get("check_updates", True):
+            try:
+                due = time.time() - float(global_settings.get("last_update_check", 0)) > 86400
+            except Exception:
+                due = True
+            if due:
+                QTimer.singleShot(3000, lambda: self.check_updates(manual=False))
+        # A forced test device outranks the remembered real one. Without this
+        # guard the restored override was silently undone here: the dropdown
+        # showed the forced wheel while the layout and title reverted to
+        # whatever was last plugged in.
+        if not test_override and global_settings.get("last_device") in DEVICE_PROFILES:
             active_profile = DEVICE_PROFILES[global_settings["last_device"]]
 
         body = QWidget(self)
@@ -3285,7 +3957,13 @@ class ControlHub(FramelessWindow):
         # pressed (same wheel writes + same notification). Skipped for the
         # one-time startup sync so launching doesn't fire a warning.
         if auto_apply:
-            try: self.apply_settings()
+            # Suppress only the "wheel not connected" warning: clicking through
+            # presets with the wheel unplugged would otherwise throw a warning
+            # toast on every single click. The success toast still shows when a
+            # wheel is actually there.
+            # Auto-switches announce themselves with their own toast, so the
+            # generic "settings applied" one would just flash and be replaced.
+            try: self.apply_settings(silent=(dev is None or getattr(self, "_auto_switch", False)))
             except Exception: pass
 
     # ---- palette / theme ----
@@ -3297,10 +3975,12 @@ class ControlHub(FramelessWindow):
         self.info_restyle()
 
     def info_restyle(self):
-        for attr in ("info_tab", "settings_tab", "lut_tab", "wheel_tab"):
+        for attr in ("info_tab", "settings_tab", "lut_tab", "wheel_tab", "ffb_tab"):
             try: getattr(self.settings, attr).restyle()
             except Exception: pass
         try: self.presets.restyle()
+        except Exception: pass
+        try: _restyle_accent(self.titleBar.brand)
         except Exception: pass
 
     def set_theme(self, code):
@@ -3428,11 +4108,11 @@ class ControlHub(FramelessWindow):
 
     # ---- apply (USER's FFB flow, verbatim) ----
     def apply_settings(self, silent=False):
-        if dev is None:
-            if not silent:
-                _defer_infobar("warning", tr("conn.not_connected"), tr("input.led_nc"), duration=2500,
-                                position=InfoBarPosition.TOP, parent=self)
-            return
+        # Persist FIRST, talk to hardware second. These are independent: the
+        # user edited a profile, and that edit must survive whether or not a
+        # wheel happens to be plugged in. Bailing out early on `dev is None`
+        # used to throw the edits away silently - the user pressed APPLY, saw
+        # a warning about the wheel, and later found their settings reverted.
         w = self.wheelset
         gain, spring, damper = w.s_gain.value(), w.s_spring.value(), w.s_damper.value()
         persist = w.cb_center.isChecked()
@@ -3440,17 +4120,123 @@ class ControlHub(FramelessWindow):
         di_ramp = w.s_ramp.value()
         center = di_center if persist else 0
         angle = w.s_rot.value()
-        update_registry_ffb(gain, spring, damper, di_center, persist, angle)
-        ffb_write(rotation_cmd(angle))
-        ffb_write(autocenter_cmd(center, di_ramp))
-        self._applied_angle = angle   # telemetry now matches the new range
         prof = global_settings["profiles"].setdefault(global_settings["selected_profile"], {})
         prof.update({"angle": angle, "di_gain": gain, "di_spring": spring, "di_damper": damper,
                      "di_center": di_center, "di_ramp": di_ramp, "di_persist": persist})
         save_settings()
+
+        if dev is None:
+            if not silent:
+                _defer_infobar("warning", tr("conn.not_connected"), tr("input.led_nc"), duration=2500,
+                                position=InfoBarPosition.TOP, parent=self)
+            return
+        update_registry_ffb(gain, spring, damper, di_center, persist, angle)
+        ffb_write(rotation_cmd(angle))
+        ffb_write(autocenter_cmd(center, di_ramp))
+        self._applied_angle = angle   # telemetry now matches the new range
         if not silent:
             _defer_infobar("success", tr("apply.ok_title"), tr("apply.ok_body"), duration=2000,
                             position=InfoBarPosition.TOP, parent=self)
+
+    def _start_game_watcher(self):
+        """Poll for a running game on a background thread.
+
+        Not on the 16 ms UI timer: enumerating every process is far too heavy
+        for 60 Hz, and it must never make the telemetry stutter. Two seconds
+        is plenty - a game takes longer than that to reach its menu.
+        """
+        def loop():
+            last = None
+            while True:
+                time.sleep(2.0)
+                if not global_settings.get("auto_game_profile", True):
+                    last = None          # re-announce when switched back on
+                    continue
+                try:
+                    profs = dict(global_settings.get("profiles", {}))
+                    name = match_running_profile(profs) or ""
+                except Exception:
+                    continue
+                # Edge-triggered: only speak when the answer CHANGES, so the
+                # user can still browse profiles by hand without the watcher
+                # yanking the selection back every two seconds.
+                if name != last:
+                    last = name
+                    try: self.game_profile_changed.emit(name)
+                    except Exception: pass
+        threading.Thread(target=loop, daemon=True).start()
+
+    def _on_game_profile(self, name):
+        """Runs on the GUI thread: switch to the detected game's profile."""
+        target = name or "Global"
+        if target not in global_settings.get("profiles", {}):
+            return
+        if global_settings.get("selected_profile") == target:
+            return
+        try:
+            self._auto_switch = True
+            self.presets.select(target)      # updates highlight + applies
+        finally:
+            self._auto_switch = False
+        if name:
+            _defer_infobar("success", tr("game.detected"),
+                           tr("game.detected_body").format(name), duration=3000,
+                           position=InfoBarPosition.TOP, parent=self)
+
+    def check_updates(self, manual=False):
+        """Ask GitHub for the latest release, off the UI thread."""
+        def work():
+            latest = fetch_latest_version()
+            # Hand the result back through a signal, NOT QTimer.singleShot:
+            # a timer belongs to the thread that created it and is run by that
+            # thread's event loop. A plain worker thread has none, so the
+            # callback simply never fired - the button looked dead with no
+            # error anywhere. A queued signal is delivered on the GUI thread.
+            try:
+                self.update_checked.emit(latest, manual)
+            except Exception:
+                pass
+        threading.Thread(target=work, daemon=True).start()
+
+    def _on_update_result(self, latest, manual):
+        """Runs on the GUI thread; safe to touch widgets here.
+
+        Automatic checks stay quiet unless there IS an update: nobody wants a
+        "you're up to date" popup every launch. A manual check always reports
+        back, otherwise pressing the button looks broken.
+        """
+        try:
+            if latest is None:
+                if manual:
+                    _defer_infobar("warning", tr("upd.failed"), tr("upd.failed_body"),
+                                   duration=3500, position=InfoBarPosition.TOP, parent=self)
+                return
+            # Only a reply we actually got counts as a check; a failed one must
+            # not start the 24h clock, or one offline launch would silence the
+            # feature for a day.
+            global_settings["last_update_check"] = time.time()
+            if _ver_tuple(latest) > _ver_tuple(HUB_VERSION):
+                # Nagging about a version the user already dismissed turns the
+                # notification into noise they learn to ignore. Tell them once
+                # per release; a manual check always answers, since they asked.
+                if not manual and global_settings.get("update_seen") == latest:
+                    save_settings()
+                    return
+                global_settings["update_seen"] = latest
+                self._update_tag = latest
+                # A bare URL in a toast that vanishes after a few seconds is
+                # useless - attach a real button so the notification ends
+                # somewhere actionable.
+                _defer_infobar("success", tr("upd.available"),
+                               tr("upd.available_body").format(latest),
+                               duration=20000, position=InfoBarPosition.TOP, parent=self,
+                               _extra=("upd.open", open_releases_page))
+            elif manual:
+                _defer_infobar("success", tr("upd.current"), tr("upd.current_body"),
+                               duration=2500, position=InfoBarPosition.TOP, parent=self)
+            save_settings()
+        except Exception:
+            pass
 
     def _restore_geometry(self):
         # One rule instead of per-tab tinkering: the window may not shrink
@@ -3585,7 +4371,16 @@ def main():
     setTheme(Theme.LIGHT if global_settings.get("theme") == "light" else Theme.DARK)
     setThemeColor(QColor(ACCENT))
     main_window = ControlHub()
-    main_window.show()
+    # Start hidden only when all three hold: launched by the logon entry, the
+    # user wants tray behaviour, AND a tray icon actually exists. Hiding
+    # without an icon would leave the app running with no way to reach it.
+    start_in_tray = ("--tray" in sys.argv
+                     and global_settings.get("minimize_to_tray", False)
+                     and getattr(main_window, "tray", None) is not None)
+    if start_in_tray:
+        main_window._hide_to_tray()
+    else:
+        main_window.show()
     poller = Poller(); poller.start()
     app.exec()
     running = False

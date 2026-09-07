@@ -1,5 +1,5 @@
 ==============================================================
-  Legacy Wheel Hub  v1.1.4
+  Legacy Wheel Hub  v1.1.5
   A free control panel for legacy Logitech force-feedback wheels
   (Driving Force GT and G27).
 ==============================================================
