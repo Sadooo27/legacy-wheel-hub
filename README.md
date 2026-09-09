@@ -56,7 +56,12 @@ https://www.gnu.org/licenses/gpl-3.0.txt
 
 ## Disclaimer
 
+
 Not affiliated with Logitech. "Logitech", "Driving Force" and "G27" are their
 trademarks, used here to say what hardware this works with. Talks to the wheel
 over USB HID and the driver's own registry settings. No Logitech code or files
 are redistributed. Use at your own risk.
+
+
+## Acknowledgments
+Developed with assistance from [Claude](https://claude.ai).
