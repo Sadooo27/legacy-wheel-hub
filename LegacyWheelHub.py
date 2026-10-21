@@ -3988,7 +3988,7 @@ def _sys32(name):
 
 def _quiet_run(args, timeout=30):
     import subprocess
-    r = subprocess.run(args, capture_output=True, text=True, errors="replace",
+    r = subprocess.run(args, stdin=subprocess.DEVNULL, capture_output=True, text=True, errors="replace",
                        timeout=timeout, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     return r.returncode, (r.stdout or "") + (r.stderr or "")
 
