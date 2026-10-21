@@ -1,3 +1,5 @@
+[![Toplam İndirme](https://img.shields.io/github/downloads/Sadooo27/legacy-wheel-hub/total?label=Downloads&color=blue)](https://github.com/Sadooo27/legacy-wheel-hub/releases)
+
 # Legacy Wheel Hub
 
 A free control panel for **legacy Logitech force-feedback wheels** (G27, G25,
