@@ -691,7 +691,6 @@ STEER_CENTER = 8192
 ACCENT_FALLBACK = "#ff6a1a"
 HUB_VERSION = "v1.2.0"
 AUTHOR = "Sadooo"
-TRANSLATORS = "Andrii (and-ri)"          # Українська, Русский
 
 
 def windows_accent_color():
@@ -1039,7 +1038,6 @@ LANG = {
         "set.devmode_h": "Force a wheel layout without hardware.", "set.ui_scale": "Interface scale", "set.ui_scale_h": "For 1440p and 4K screens. Applies after a restart.", "set.restart_hint": "Restart the app to apply the new scale.",
         "info.opmode_active": "Native Advanced Mode (Unlocked)", "info.opmode_idle": "Idle / Disconnected",
         "info.active": "Active", "info.standby": "Standby",
-        "about.translation": "Translation",
         "lut.replace_title": "Replace the LUT?",
         "lut.replace_body": "There is already a {0}. Replace it with the imported one?",
         "dlg.overwrite": "Overwrite",
@@ -1215,7 +1213,6 @@ LANG = {
         "set.devmode_h": "Donanım olmadan bir direksiyon düzenini zorlar.", "set.ui_scale": "Arayüz ölçeği", "set.ui_scale_h": "1440p ve 4K ekranlar için. Yeniden başlatınca geçerli olur.", "set.restart_hint": "Yeni ölçeğin uygulanması için uygulamayı yeniden başlatın.",
         "info.opmode_active": "Yerel Gelişmiş Mod (Kilit Açık)", "info.opmode_idle": "Boşta / Bağlı Değil",
         "info.active": "Aktif", "info.standby": "Beklemede",
-        "about.translation": "Çeviri",
         "lut.replace_title": "LUT değiştirilsin mi?",
         "lut.replace_body": "Zaten bir {0} var. İçe aktarılanla değiştirilsin mi?",
         "dlg.overwrite": "Üzerine yaz",
@@ -1391,7 +1388,6 @@ LANG = {
         "set.devmode_h": "Erzwingt ein Lenkrad-Layout ohne Hardware.", "set.ui_scale": "Oberflächenskalierung", "set.ui_scale_h": "Für 1440p- und 4K-Bildschirme. Gilt nach einem Neustart.", "set.restart_hint": "Starten Sie die App neu, um die neue Skalierung anzuwenden.",
         "info.opmode_active": "Nativer Erweiterter Modus (Entsperrt)", "info.opmode_idle": "Leerlauf / Getrennt",
         "info.active": "Aktiv", "info.standby": "Standby",
-        "about.translation": "Übersetzung",
         "lut.replace_title": "LUT ersetzen?",
         "lut.replace_body": "Es gibt schon eine {0}. Durch die importierte ersetzen?",
         "dlg.overwrite": "Überschreiben",
@@ -1670,7 +1666,6 @@ LANG = {
         "info.opmode_idle": "Очікування / Відключено",
         "info.active": "Активно",
         "info.standby": "Очікування",
-        "about.translation": "Переклад",
         "lut.replace_title": "Замінити LUT?",
         "lut.replace_body": "{0} уже існує. Замінити його імпортованим?",
         "dlg.overwrite": "Перезаписати",
@@ -1949,7 +1944,6 @@ LANG = {
         "info.opmode_idle": "Ожидание / Отключено",
         "info.active": "Активно",
         "info.standby": "Ожидание",
-        "about.translation": "Перевод",
         "lut.replace_title": "Заменить LUT?",
         "lut.replace_body": "{0} уже существует. Заменить его импортированным?",
         "dlg.overwrite": "Перезаписать",
@@ -12272,7 +12266,6 @@ class InfoTab(QWidget):
         lay.addSpacing(8)
         self._sec(lay, "about.sec_credits")
         self._row(lay, "about.author", "author")
-        self._row(lay, "about.translation", "translation")
         lay.addSpacing(8)
 
         # ABOUT / legal -- version, repo, license, TM notice (localized)
@@ -12332,8 +12325,7 @@ class InfoTab(QWidget):
         data = {"model": info["model"], "hwid": info["hwid"], "interface": info["interface"],
                 "power": power, "tracking": info["tracking"], "axis": info["axis"],
                 "ffb": info["ffb"], "polling": info["polling"], "opmode": opmode,
-                "api": info["api"], "hub": HUB_VERSION, "author": AUTHOR,
-                "translation": TRANSLATORS}
+                "api": info["api"], "hub": HUB_VERSION, "author": AUTHOR}
         for k, v in data.items():
             if k in self.vals:
                 self.vals[k].setText(v)
