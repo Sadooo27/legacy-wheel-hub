@@ -3771,22 +3771,26 @@ def restore_ffb_defaults():
 # ---------------------------------------------------------------------------
 #  Combined pedals (LGS: "Report Combined Pedals")
 # ---------------------------------------------------------------------------
-# Logitech's filter driver (wmfilter.sys, LGS 5.10) reads this one per wheel
-# when the wheel starts: CombinePedals, a DWORD (non-zero = on) under its own
-# service key,
-#     HKLM\SYSTEM\CurrentControlSet\Services\WmFilter\Parameters\VID_046D&PID_xxxx
-# (RtlQueryRegistryValues relative to the services key). Every wheel here
-# reads it: G27, G25, DFGT, DFP, Driving Force and both MOMOs. It is read only
-# while the wheel starts, so a change takes a restart of the wheel's USB
-# device, and the key is in HKLM, so writing it takes administrator rights.
-# LGS had a service of its own for that; here the app starts a second copy of
-# itself with administrator rights for the one write (one Windows prompt),
-# and that copy restarts the wheel.
+# Logitech's filter driver reads this one per wheel when the wheel starts:
+# CombinePedals, a DWORD (non-zero = on) under its own service key,
+#     HKLM\SYSTEM\CurrentControlSet\Services\<filter>\Parameters\VID_046D&PID_xxxx
+# (RtlQueryRegistryValues relative to the services key). The filter is
+# wmfilter.sys (service WmFilter) with LGS 5.10, and LGJoyHidFilter.sys
+# (service LGJoyHidFilter) with the community driver package for Windows 11,
+# which attaches that one to the wheels instead - same value, same layout.
+# Every wheel here reads it: G27, G25, DFGT, DFP, Driving Force and both MOMOs.
+# It is read only while the wheel starts, so a change takes a restart of the
+# wheel's USB device, and the key is in HKLM, so writing it takes
+# administrator rights. LGS had a service of its own for that; here the app
+# starts a second copy of itself with administrator rights for the one write
+# (one Windows prompt), and that copy restarts the wheel.
 #
 # The key is not opened up to users instead: the driver reads the value
 # straight into a DWORD with no type check, and a key that a kernel driver
 # reads that way must not be writable by every program the user runs.
-WMFILTER_SERVICE = r"SYSTEM\CurrentControlSet\Services\WmFilter"
+_SERVICES = r"SYSTEM\CurrentControlSet\Services" + "\\"
+COMBINE_FILTERS = ("LGJoyHidFilter", "WmFilter")      # first found is read
+WMFILTER_SERVICE = _SERVICES + "WmFilter"
 WMFILTER_PARAMS = WMFILTER_SERVICE + r"\Parameters"
 COMBINE_DONE, COMBINE_FAILED, COMBINE_REPLUG = 0, 1, 2
 
@@ -3803,20 +3807,20 @@ def combine_pedals_pids(prof=None):
 
 
 def combine_pedals_state(prof=None):
-    """True or False as Logitech's driver will read it; None when that driver
-    is not installed (no service key), so there is nothing to set."""
+    """True or False as Logitech's driver will read it; None when no filter
+    driver that reads it is installed (no service key), so there is nothing
+    to set."""
     if winreg is None:
         return None
     pids = combine_pedals_pids(prof)
     if not pids:
         return None
-    try:
-        winreg.CloseKey(winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, WMFILTER_SERVICE, 0,
-                                       winreg.KEY_READ | _reg64()))
-    except OSError:
+    filters = combine_filters()
+    if not filters:
         return None
     try:
-        key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, WMFILTER_PARAMS + "\\" + pids[0], 0,
+        key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE,
+                             _SERVICES + filters[0] + "\\Parameters\\" + pids[0], 0,
                              winreg.KEY_READ | _reg64())
         try:
             value, kind = winreg.QueryValueEx(key, "CombinePedals")
@@ -3827,15 +3831,36 @@ def combine_pedals_state(prof=None):
     return kind == winreg.REG_DWORD and int(value) != 0
 
 
-def write_combine_pedals(on, pids):
-    """The write itself; needs administrator rights."""
-    for pid in pids:
-        key = winreg.CreateKeyEx(winreg.HKEY_LOCAL_MACHINE, WMFILTER_PARAMS + "\\" + pid, 0,
-                                 winreg.KEY_SET_VALUE | _reg64())
+def combine_filters():
+    """Logitech filter services installed here that read CombinePedals."""
+    if winreg is None:
+        return []
+    found = []
+    for name in COMBINE_FILTERS:
         try:
-            winreg.SetValueEx(key, "CombinePedals", 0, winreg.REG_DWORD, 1 if on else 0)
-        finally:
-            winreg.CloseKey(key)
+            winreg.CloseKey(winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, _SERVICES + name, 0,
+                                           winreg.KEY_READ | _reg64()))
+            found.append(name)
+        except OSError:
+            pass
+    return found
+
+
+def write_combine_pedals(on, pids):
+    """The write itself; needs administrator rights. Written for every filter
+    that is installed, so whichever one sits on the wheel reads it."""
+    filters = combine_filters()
+    if not filters:
+        raise OSError("no Logitech filter driver")
+    for name in filters:
+        for pid in pids:
+            key = winreg.CreateKeyEx(winreg.HKEY_LOCAL_MACHINE,
+                                     _SERVICES + name + "\\Parameters\\" + pid, 0,
+                                     winreg.KEY_SET_VALUE | _reg64())
+            try:
+                winreg.SetValueEx(key, "CombinePedals", 0, winreg.REG_DWORD, 1 if on else 0)
+            finally:
+                winreg.CloseKey(key)
 
 
 def _pnputil(*args):
@@ -3892,7 +3917,12 @@ def combine_pedals_main(argv):
         write_combine_pedals(on, pids)
     except OSError:
         return COMBINE_FAILED
-    return COMBINE_DONE if restart_wheel_usb(pids) else COMBINE_REPLUG
+    done = restart_wheel_usb(pids)
+    try:
+        install_combine_tasks()              # so the next change asks nothing
+    except Exception:
+        pass
+    return COMBINE_DONE if done else COMBINE_REPLUG
 
 
 def run_elevated(args, timeout_ms=60000):
@@ -3935,13 +3965,185 @@ def run_elevated(args, timeout_ms=60000):
         k32.CloseHandle(sei.hProcess)
 
 
+# Asked once, not every time. Two scheduled tasks run as SYSTEM and do only
+# this - one writes CombinePedals = 1, the other 0, for every wheel under
+# whichever Logitech filter is installed, then restarts the wheels that are
+# plugged in - with nothing but Windows' own reg.exe and pnputil.exe, from a
+# fixed command line. Every user may start them and nobody but an
+# administrator may change them, so they hand out no more than this switch,
+# and no file a user can write is ever run as SYSTEM (the portable copy and
+# the source live in user folders). The installer sets them up; otherwise the
+# first change does it, in the copy that already has the administrator's
+# permission. Uninstalling removes them. Without them (declined, or a
+# Windows that refuses), every change asks as before.
+COMBINE_TASKS = {True: "Legacy Wheel Hub - Combined pedals on",
+                 False: "Legacy Wheel Hub - Combined pedals off"}
+# SYSTEM and Administrators: everything; signed-in users: read and run
+COMBINE_TASK_SDDL = "D:(A;;FA;;;SY)(A;;FA;;;BA)(A;;GRGX;;;AU)"
+
+
+def _sys32(name):
+    return os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32", name)
+
+
+def _quiet_run(args, timeout=30):
+    import subprocess
+    r = subprocess.run(args, capture_output=True, text=True, errors="replace",
+                       timeout=timeout, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    return r.returncode, (r.stdout or "") + (r.stderr or "")
+
+
+def combine_task_script(on):
+    """The PowerShell the task runs: fixed, built from the wheels' own
+    registry names only."""
+    pids = ",".join("'%s'" % p for p in ALL_REGISTRY_PIDS)
+    usb = "|".join(sorted({p.rsplit("PID_", 1)[-1] for p in ALL_REGISTRY_PIDS}))
+    filters = ",".join("'%s'" % f for f in COMBINE_FILTERS)
+    return "\r\n".join([
+        "$ErrorActionPreference = 'SilentlyContinue'",
+        "$sys = Join-Path $env:SystemRoot 'System32'",
+        "$reg = Join-Path $sys 'reg.exe'",
+        "$pnp = Join-Path $sys 'pnputil.exe'",
+        "foreach ($f in @(%s)) {" % filters,
+        "  $svc = 'HKLM\\SYSTEM\\CurrentControlSet\\Services\\' + $f",
+        "  $key = 'Registry::HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\' + $f",
+        "  if (-not (Test-Path -LiteralPath $key)) { continue }",
+        "  foreach ($p in @(%s)) {" % pids,
+        "    & $reg add ($svc + '\\Parameters\\' + $p) /v CombinePedals /t REG_DWORD /d %d /f /reg:64 | Out-Null"
+        % (1 if on else 0),
+        "  }",
+        "}",
+        "$ids = & $pnp /enum-devices /connected | Select-String -AllMatches -Pattern "
+        "'USB\\\\VID_046D&PID_(%s)\\\\\\S+' | ForEach-Object { $_.Matches } | "
+        "ForEach-Object { $_.Value } | Sort-Object -Unique" % usb,
+        "foreach ($i in $ids) { & $pnp /restart-device $i | Out-Null }",
+    ])
+
+
+def combine_task_xml(on):
+    import base64
+    from xml.sax.saxutils import escape
+    enc = base64.b64encode(combine_task_script(on).encode("utf-16-le")).decode("ascii")
+    return """<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Author>Legacy Wheel Hub</Author>
+    <Description>%s</Description>
+  </RegistrationInfo>
+  <Principals>
+    <Principal id="System">
+      <UserId>S-1-5-18</UserId>
+      <RunLevel>HighestAvailable</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <AllowHardTerminate>true</AllowHardTerminate>
+    <StartWhenAvailable>false</StartWhenAvailable>
+    <RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>
+    <AllowStartOnDemand>true</AllowStartOnDemand>
+    <Enabled>true</Enabled>
+    <Hidden>false</Hidden>
+    <RunOnlyIfIdle>false</RunOnlyIfIdle>
+    <ExecutionTimeLimit>PT2M</ExecutionTimeLimit>
+    <Priority>7</Priority>
+  </Settings>
+  <Actions Context="System">
+    <Exec>
+      <Command>%%SystemRoot%%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe</Command>
+      <Arguments>-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -EncodedCommand %s</Arguments>
+    </Exec>
+  </Actions>
+</Task>
+""" % (escape("Logitech's \"Report Combined Pedals\" %s for the wheels, then restarts them "
+              "(Legacy Wheel Hub's Pedals tab starts this)." % ("on" if on else "off")), enc)
+
+
+def install_combine_tasks():
+    """Register both tasks (needs administrator rights). True when both are
+    there afterwards."""
+    if sys.platform != "win32":
+        return False
+    import base64
+    ps = _sys32(r"WindowsPowerShell\v1.0\powershell.exe")
+    for on, name in COMBINE_TASKS.items():
+        xml = combine_task_xml(on).replace("'", "''")
+        # 6 = create or update, 5 = service account, with the task's own access rules
+        cmd = ("$ErrorActionPreference = 'Stop'\r\n"
+               "$svc = New-Object -ComObject Schedule.Service\r\n$svc.Connect()\r\n"
+               "$null = $svc.GetFolder('\\').RegisterTask('%s', '%s', 6, 'SYSTEM', $null, 5, '%s')\r\n"
+               % (name, xml, COMBINE_TASK_SDDL))
+        enc = base64.b64encode(cmd.encode("utf-16-le")).decode("ascii")
+        try:
+            _quiet_run([ps, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+                        "-EncodedCommand", enc], timeout=60)
+        except Exception:
+            return False
+    return all(combine_task_ready(on) for on in COMBINE_TASKS)
+
+
+def remove_combine_tasks():
+    for name in COMBINE_TASKS.values():
+        try:
+            _quiet_run([_sys32("schtasks.exe"), "/Delete", "/TN", "\\" + name, "/F"])
+        except Exception:
+            pass
+
+
+def combine_task_ready(on):
+    if sys.platform != "win32":
+        return False
+    try:
+        rc, _ = _quiet_run([_sys32("schtasks.exe"), "/Query", "/TN", "\\" + COMBINE_TASKS[bool(on)]])
+    except Exception:
+        return False
+    return rc == 0
+
+
+def _combine_by_task(on, prof):
+    """Through the task, with no prompt: COMBINE_DONE / COMBINE_REPLUG once
+    the driver's value has changed, None when the task is not there or did
+    not do it."""
+    if not combine_task_ready(on):
+        return None
+    try:
+        rc, _ = _quiet_run([_sys32("schtasks.exe"), "/Run", "/TN", "\\" + COMBINE_TASKS[bool(on)]])
+    except Exception:
+        return None
+    if rc != 0:
+        return None
+    end = time.monotonic() + 20
+    while time.monotonic() < end:
+        if combine_pedals_state(prof) is bool(on):
+            time.sleep(3)                    # the wheel restarts after the write
+            try:
+                new_enough = sys.getwindowsversion().build >= 19041
+            except Exception:
+                new_enough = True
+            return COMBINE_DONE if new_enough else COMBINE_REPLUG
+        time.sleep(0.25)
+    return None
+
+
+def combine_tasks_main(argv):
+    """--combine-pedals-setup (the installer): register the tasks."""
+    return 0 if install_combine_tasks() else 1
+
+
 def request_combine_pedals(on, prof=None):
     """Turn the driver's combined pedals on or off for the connected wheel.
     COMBINE_DONE, COMBINE_REPLUG, COMBINE_FAILED, or None when Windows'
-    permission prompt was declined. Blocks while the prompt is up."""
+    permission prompt was declined. Blocks while the prompt is up. Through
+    the scheduled task when it is there (no prompt), otherwise one prompt,
+    and that copy sets the task up for next time."""
     pids = combine_pedals_pids(prof)
     if combine_pedals_state(prof) is None or not pids:
         return COMBINE_FAILED
+    code = _combine_by_task(on, prof)
+    if code is not None:
+        return code
     code = run_elevated("--combine-pedals %d %s" % (1 if on else 0, ",".join(pids)))
     if code is None:
         return None
@@ -13420,6 +13622,11 @@ def uninstall_cleanup():
         write_sdk_registration(False)
     except Exception:
         pass
+    # and the combined-pedals tasks
+    try:
+        remove_combine_tasks()
+    except Exception:
+        pass
     return done
 
 
@@ -13452,6 +13659,9 @@ def main():
         # the copy with administrator rights for the SDK's registration (the
         # installer runs it too)
         sys.exit(sdk_register_main(sys.argv))
+    if "--combine-pedals-setup" in sys.argv:
+        # the installer: the tasks that change combined pedals without asking
+        sys.exit(combine_tasks_main(sys.argv))
     if "--combine-pedals" in sys.argv:
         # the copy started with administrator rights for the one driver
         # setting; the app that asked is still open, so no single-instance check
