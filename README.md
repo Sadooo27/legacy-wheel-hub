@@ -1,6 +1,8 @@
 # Legacy Wheel Hub
-
 [![Toplam İndirme](https://img.shields.io/github/downloads/Sadooo27/legacy-wheel-hub/total?label=Downloads&color=blue)](https://github.com/Sadooo27/legacy-wheel-hub/releases)
+[![Son Sürüm](https://img.shields.io/github/v/release/Sadooo27/legacy-wheel-hub?label=Latest%20Release&color=brightgreen)](https://github.com/Sadooo27/legacy-wheel-hub/releases/latest)
+[![Son Sürüm İndirme](https://img.shields.io/github/downloads/Sadooo27/legacy-wheel-hub/latest/total?label=Latest%20Downloads&color=orange)](https://github.com/Sadooo27/legacy-wheel-hub/releases/latest)
+[![Lisans](https://img.shields.io/github/license/Sadooo27/legacy-wheel-hub?color=lightgrey)](https://github.com/Sadooo27/legacy-wheel-hub/blob/main/LICENSE)
 
 A free control panel for **legacy Logitech force-feedback wheels** (G27, G25,
 Driving Force GT, Driving Force Pro, Driving Force, MOMO Racing and MOMO Force) —
